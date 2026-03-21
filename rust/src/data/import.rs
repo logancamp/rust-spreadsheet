@@ -77,11 +77,11 @@ mod tests {
     use super::*;
 
     const SAMPLE_CSV: &str = "\
-name,revenue,active
-Acme,150000,true
-Globex,320000,false
-Initech,98000,true
-";
+    name,revenue,active
+    Acme,150000,true
+    Globex,320000,false
+    Initech,98000,true
+    ";
 
     #[test]
     fn test_load_csv_str_shape() {
