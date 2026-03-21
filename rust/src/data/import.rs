@@ -76,12 +76,7 @@ pub fn load_xlsx(path: impl AsRef<Path>) -> Result<TableObject, AppError> {
 mod tests {
     use super::*;
 
-    const SAMPLE_CSV: &str = "\
-    name,revenue,active
-    Acme,150000,true
-    Globex,320000,false
-    Initech,98000,true
-    ";
+    const SAMPLE_CSV: &str = "name,revenue,active\nAcme,150000,true\nGlobex,320000,false\nInitech,98000,true\n";
 
     #[test]
     fn test_load_csv_str_shape() {
