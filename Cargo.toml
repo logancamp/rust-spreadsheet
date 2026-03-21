@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "rust",
+    "flutter/rust",
+]
+
+[workspace.dependencies]
+spreadsheet-ai = { path = "rust" }
+polars = { version = "0.53", features = ["lazy", "csv", "dtype-full", "strings", "temporal"] }
+flutter_rust_bridge = "=2.11.1"
