@@ -13,6 +13,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 calamine = "0.26"
 rust_xlsxwriter = "0.80"
+flutter_rust_bridge = "2"
 
 [dev-dependencies]
 tempfile = "3"
