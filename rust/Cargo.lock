@@ -2767,7 +2767,6 @@ dependencies = [
  "chrono",
  "polars",
  "rust_xlsxwriter",
- "serde",
  "tempfile",
  "thiserror",
  "uuid",
