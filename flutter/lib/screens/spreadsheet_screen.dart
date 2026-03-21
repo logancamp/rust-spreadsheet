@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/bridge_service.dart';
 import 'package:spreadsheet_ai/src/rust/api/simple.dart';
+import '../widgets/table_widget.dart';
 
 class SpreadsheetScreen extends StatefulWidget {
   const SpreadsheetScreen({super.key});
@@ -29,7 +30,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
       ),
       body: _tableData == null
           ? const Center(child: Text('Loading...'))
-          : Center(child: Text(_tableData!.name)),
+          : TableWidget(data: _tableData!),
     );
   }
 }
