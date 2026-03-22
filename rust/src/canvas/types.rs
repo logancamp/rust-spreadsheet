@@ -105,12 +105,17 @@ impl Canvas {
     pub fn add_object(&mut self, obj: SheetObject) {
         self.objects.push(obj);
     }
+    pub fn set_snap_to_grid(&mut self, switch: bool) { self.snap_to_grid = switch; }
 
     pub fn get_table(&self, name: &str) -> Option<&TableObject> {
         self.objects.iter().find_map(|o| match o {
             SheetObject::Table(t) if t.name == name => Some(t), _ => None,
         })
     }
+
+    pub fn objects(&self) -> &Vec<SheetObject> { &self.objects }
+    pub fn name(&self) -> &str { &self.name }
+    pub fn snap_to_grid(&self) -> bool { self.snap_to_grid  }
 }
 
 impl TableObject {

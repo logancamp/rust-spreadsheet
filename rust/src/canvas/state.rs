@@ -41,8 +41,18 @@ pub fn canvas_load_csv_str(name: &str, csv: &str) -> Result<(), AppError> {
 }
 
 pub fn canvas_load_xlsx(path: &str) -> Result<(), AppError> {
-    let table = load_xlsx(path)?;
-    with_canvas(|canvas| {
-        canvas.add_object(SheetObject::Table(table));
-    })
+    let tables = load_xlsx(path)?;
+    for table in tables {
+        with_canvas(|canvas| {
+            canvas.add_object(SheetObject::Table(table.clone()));
+        })?;
+    }
+    Ok(())
+}
+
+pub fn set_canvas(canvas: Canvas) -> Result<(), AppError> {
+    let mut guard = CANVAS.lock()
+        .map_err(|_| AppError::NotFound("Canvas lock poisoned".to_string()))?;
+    *guard = Some(canvas);
+    Ok(())
 }

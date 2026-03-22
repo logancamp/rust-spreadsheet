@@ -1,4 +1,4 @@
-import 'package:spreadsheet_ai/src/rust/api/simple.dart';
+import 'package:spreadsheet_ai/src/rust/api/simple.dart' as bridge;
 import 'package:spreadsheet_ai/src/rust/frb_generated.dart';
 
 class BridgeService {
@@ -6,7 +6,39 @@ class BridgeService {
     await RustLib.init();
   }
 
-  static TableData loadCsv(String name, String csv) {
-    return loadCsvToFlutter(name: name, csv: csv); // this is the imported one
+  static void newCanvas(String name) {
+    bridge.newCanvas(name: name);
+  }
+
+  static void openSai(String path) {
+    bridge.openSai(path: path);
+  }
+
+  static void saveSai(String path) {
+    bridge.saveSai(path: path);
+  }
+
+  static void importCsv(String path) {
+    bridge.importCsv(path: path);
+  }
+
+  static void importXlsx(String path) {
+    bridge.importXlsx(path: path);
+  }
+
+  static void exportXlsx(String path) {
+      bridge.exportXlsx(path: path);
+  }
+
+  static void exportCsv(String path, String tableName) {
+      bridge.exportCsv(path: path, tableName: tableName);
+  }
+
+  static List<bridge.TableInfo> getCanvasTables() {
+    return bridge.getCanvasTables();
+  }
+
+  static bridge.TableData getTableData(String tableName) {
+    return bridge.getTableData(tableName: tableName);
   }
 }

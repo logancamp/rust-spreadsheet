@@ -31,7 +31,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<TableInfo> dco_decode_list_table_info(dynamic raw);
+
+  @protected
   TableData dco_decode_table_data(dynamic raw);
+
+  @protected
+  TableInfo dco_decode_table_info(dynamic raw);
+
+  @protected
+  int dco_decode_u_32(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -52,7 +61,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  List<TableInfo> sse_decode_list_table_info(SseDeserializer deserializer);
+
+  @protected
   TableData sse_decode_table_data(SseDeserializer deserializer);
+
+  @protected
+  TableInfo sse_decode_table_info(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -81,7 +99,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       Uint8List self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_table_info(
+      List<TableInfo> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_table_data(TableData self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_table_info(TableInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);

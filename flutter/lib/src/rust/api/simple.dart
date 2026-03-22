@@ -9,8 +9,33 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
 
-TableData loadCsvToFlutter({required String name, required String csv}) =>
-    RustLib.instance.api.crateApiSimpleLoadCsvToFlutter(name: name, csv: csv);
+void newCanvas({required String name}) =>
+    RustLib.instance.api.crateApiSimpleNewCanvas(name: name);
+
+void openSai({required String path}) =>
+    RustLib.instance.api.crateApiSimpleOpenSai(path: path);
+
+void saveSai({required String path}) =>
+    RustLib.instance.api.crateApiSimpleSaveSai(path: path);
+
+void importCsv({required String path}) =>
+    RustLib.instance.api.crateApiSimpleImportCsv(path: path);
+
+void importXlsx({required String path}) =>
+    RustLib.instance.api.crateApiSimpleImportXlsx(path: path);
+
+void exportXlsx({required String path}) =>
+    RustLib.instance.api.crateApiSimpleExportXlsx(path: path);
+
+void exportCsv({required String path, required String tableName}) =>
+    RustLib.instance.api
+        .crateApiSimpleExportCsv(path: path, tableName: tableName);
+
+List<TableInfo> getCanvasTables() =>
+    RustLib.instance.api.crateApiSimpleGetCanvasTables();
+
+TableData getTableData({required String tableName}) =>
+    RustLib.instance.api.crateApiSimpleGetTableData(tableName: tableName);
 
 class TableData {
   final String name;
@@ -34,4 +59,28 @@ class TableData {
           name == other.name &&
           columns == other.columns &&
           rows == other.rows;
+}
+
+class TableInfo {
+  final String name;
+  final int rows;
+  final int cols;
+
+  const TableInfo({
+    required this.name,
+    required this.rows,
+    required this.cols,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ rows.hashCode ^ cols.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TableInfo &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          rows == other.rows &&
+          cols == other.cols;
 }

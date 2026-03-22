@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1260620510;
+  int get rustContentHash => 2092411338;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -81,12 +81,28 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  void crateApiSimpleExportCsv(
+      {required String path, required String tableName});
+
+  void crateApiSimpleExportXlsx({required String path});
+
+  List<TableInfo> crateApiSimpleGetCanvasTables();
+
+  TableData crateApiSimpleGetTableData({required String tableName});
+
   String crateApiSimpleGreet({required String name});
+
+  void crateApiSimpleImportCsv({required String path});
+
+  void crateApiSimpleImportXlsx({required String path});
 
   Future<void> crateApiSimpleInitApp();
 
-  TableData crateApiSimpleLoadCsvToFlutter(
-      {required String name, required String csv});
+  void crateApiSimpleNewCanvas({required String name});
+
+  void crateApiSimpleOpenSai({required String path});
+
+  void crateApiSimpleSaveSai({required String path});
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -98,12 +114,106 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  void crateApiSimpleExportCsv(
+      {required String path, required String tableName}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        sse_encode_String(tableName, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleExportCsvConstMeta,
+      argValues: [path, tableName],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleExportCsvConstMeta => const TaskConstMeta(
+        debugName: "export_csv",
+        argNames: ["path", "tableName"],
+      );
+
+  @override
+  void crateApiSimpleExportXlsx({required String path}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleExportXlsxConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleExportXlsxConstMeta => const TaskConstMeta(
+        debugName: "export_xlsx",
+        argNames: ["path"],
+      );
+
+  @override
+  List<TableInfo> crateApiSimpleGetCanvasTables() {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_table_info,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleGetCanvasTablesConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleGetCanvasTablesConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_canvas_tables",
+        argNames: [],
+      );
+
+  @override
+  TableData crateApiSimpleGetTableData({required String tableName}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(tableName, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_table_data,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleGetTableDataConstMeta,
+      argValues: [tableName],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleGetTableDataConstMeta => const TaskConstMeta(
+        debugName: "get_table_data",
+        argNames: ["tableName"],
+      );
+
+  @override
   String crateApiSimpleGreet({required String name}) {
     return handler.executeSync(SyncTask(
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(name, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -121,12 +231,58 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  void crateApiSimpleImportCsv({required String path}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleImportCsvConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleImportCsvConstMeta => const TaskConstMeta(
+        debugName: "import_csv",
+        argNames: ["path"],
+      );
+
+  @override
+  void crateApiSimpleImportXlsx({required String path}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleImportXlsxConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleImportXlsxConstMeta => const TaskConstMeta(
+        debugName: "import_xlsx",
+        argNames: ["path"],
+      );
+
+  @override
   Future<void> crateApiSimpleInitApp() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 2, port: port_);
+            funcId: 8, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -144,29 +300,72 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  TableData crateApiSimpleLoadCsvToFlutter(
-      {required String name, required String csv}) {
+  void crateApiSimpleNewCanvas({required String name}) {
     return handler.executeSync(SyncTask(
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(name, serializer);
-        sse_encode_String(csv, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
       },
       codec: SseCodec(
-        decodeSuccessData: sse_decode_table_data,
+        decodeSuccessData: sse_decode_unit,
         decodeErrorData: sse_decode_String,
       ),
-      constMeta: kCrateApiSimpleLoadCsvToFlutterConstMeta,
-      argValues: [name, csv],
+      constMeta: kCrateApiSimpleNewCanvasConstMeta,
+      argValues: [name],
       apiImpl: this,
     ));
   }
 
-  TaskConstMeta get kCrateApiSimpleLoadCsvToFlutterConstMeta =>
-      const TaskConstMeta(
-        debugName: "load_csv_to_flutter",
-        argNames: ["name", "csv"],
+  TaskConstMeta get kCrateApiSimpleNewCanvasConstMeta => const TaskConstMeta(
+        debugName: "new_canvas",
+        argNames: ["name"],
+      );
+
+  @override
+  void crateApiSimpleOpenSai({required String path}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleOpenSaiConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleOpenSaiConstMeta => const TaskConstMeta(
+        debugName: "open_sai",
+        argNames: ["path"],
+      );
+
+  @override
+  void crateApiSimpleSaveSai({required String path}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSimpleSaveSaiConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleSaveSaiConstMeta => const TaskConstMeta(
+        debugName: "save_sai",
+        argNames: ["path"],
       );
 
   @protected
@@ -194,6 +393,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TableInfo> dco_decode_list_table_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_table_info).toList();
+  }
+
+  @protected
   TableData dco_decode_table_data(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -204,6 +409,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       columns: dco_decode_list_String(arr[1]),
       rows: dco_decode_list_list_String(arr[2]),
     );
+  }
+
+  @protected
+  TableInfo dco_decode_table_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return TableInfo(
+      name: dco_decode_String(arr[0]),
+      rows: dco_decode_u_32(arr[1]),
+      cols: dco_decode_u_32(arr[2]),
+    );
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -257,12 +481,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TableInfo> sse_decode_list_table_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TableInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_table_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   TableData sse_decode_table_data(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_name = sse_decode_String(deserializer);
     var var_columns = sse_decode_list_String(deserializer);
     var var_rows = sse_decode_list_list_String(deserializer);
     return TableData(name: var_name, columns: var_columns, rows: var_rows);
+  }
+
+  @protected
+  TableInfo sse_decode_table_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_rows = sse_decode_u_32(deserializer);
+    var var_cols = sse_decode_u_32(deserializer);
+    return TableInfo(name: var_name, rows: var_rows, cols: var_cols);
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
   }
 
   @protected
@@ -322,11 +573,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_table_info(
+      List<TableInfo> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_table_info(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_table_data(TableData self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.name, serializer);
     sse_encode_list_String(self.columns, serializer);
     sse_encode_list_list_String(self.rows, serializer);
+  }
+
+  @protected
+  void sse_encode_table_info(TableInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_u_32(self.rows, serializer);
+    sse_encode_u_32(self.cols, serializer);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
   }
 
   @protected
