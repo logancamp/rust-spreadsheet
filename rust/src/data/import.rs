@@ -2,7 +2,7 @@ use polars::prelude::*;
 use std::path::Path;
 use calamine::{open_workbook, Reader, Xlsx};
 
-use crate::canvas::types::TableObject;
+use crate::canvas::types::{TableObject};
 use crate::error::AppError;
 
 pub fn load_csv(path: impl AsRef<Path>) -> Result<TableObject, AppError> {
