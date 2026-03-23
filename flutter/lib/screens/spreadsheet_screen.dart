@@ -3,6 +3,7 @@ import '../services/bridge_service.dart';
 import 'package:spreadsheet_ai/src/rust/api/simple.dart';
 import '../widgets/table_widget.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 
 class SpreadsheetScreen extends StatefulWidget {
   const SpreadsheetScreen({super.key});
@@ -71,6 +72,15 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
           _refreshTables();
         }
         break;
+      case 'new':
+        BridgeService.newCanvas('Untitled');
+        setState(() {
+          _tables = [];
+          _selectedTable = null;
+          _tableData = null;
+          _currentPath = null;
+        });
+        break;
       case 'import_csv':
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
@@ -130,58 +140,139 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Spreadsheet AI'),
-        actions: [
-          PopupMenuButton<String>(
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('File', style: TextStyle(fontSize: 16)),
+    return PlatformMenuBar(
+      menus: [
+        PlatformMenu(
+          label: 'Spreadsheet AI',
+          menus: [
+            PlatformMenuItemGroup(
+              members: [
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
+              ],
             ),
-            onSelected: (value) => _handleFileMenu(value), // menu bar select pass
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'open', child: Text('Open (.sai)')),
-              const PopupMenuItem(value: 'import_csv', child: Text('Import CSV')),
-              const PopupMenuItem(value: 'import_xlsx', child: Text('Import XLSX')),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: 'save', child: Text('Save (.sai)')),
-              const PopupMenuItem(value: 'save_as', child: Text('Save As (.sai)')),
-              const PopupMenuItem(value: 'export_xlsx', child: Text('Export XLSX')),
-              const PopupMenuItem(value: 'export_csv', child: Text('Export CSV')),
-            ],
-          ),
-        ],
-      ),
-      body: Row(
-        children: [
-          SizedBox(
-            width: 200,
-            child: Column(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Text('Tables', style: TextStyle(fontWeight: FontWeight.bold)),
+            PlatformMenuItemGroup(
+              members: [
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hide),
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hideOtherApplications),
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.showAllApplications),
+              ],
+            ),
+            PlatformMenuItemGroup(
+              members: [
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit),
+              ],
+            ),
+          ],
+        ),
+        PlatformMenu(
+          label: 'File',
+          menus: [
+            PlatformMenuItemGroup(
+              members: [
+                PlatformMenuItem(
+                  label: 'New',
+                  shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
+                  onSelected: () => _handleFileMenu('new'),
                 ),
-                Expanded(
-                  child: ListView(
-                    children: _tables.map((table) => ListTile(
-                      title: Text(table.name),
-                      selected: table.name == _selectedTable,
-                      onTap: () => _selectTable(table.name),
-                    )).toList(),
-                  ),
+                PlatformMenuItem(
+                  label: 'Open',
+                  shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
+                  onSelected: () => _handleFileMenu('open'),
                 ),
               ],
             ),
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: _tableData == null
-                ? const Center(child: Text('No table selected'))
-                : TableWidget(data: _tableData!),
-          ),
-        ],
+            PlatformMenuItemGroup(
+              members: [
+                PlatformMenuItem(
+                  label: 'Save',
+                  shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true),
+                  onSelected: () => _handleFileMenu('save'),
+                ),
+                PlatformMenuItem(
+                  label: 'Save As',
+                  shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true),
+                  onSelected: () => _handleFileMenu('save_as'),
+                ),
+              ],
+            ),
+            PlatformMenuItemGroup(
+              members: [
+                PlatformMenuItem(
+                  label: 'Import CSV',
+                  onSelected: () => _handleFileMenu('import_csv'),
+                ),
+                PlatformMenuItem(
+                  label: 'Import XLSX',
+                  onSelected: () => _handleFileMenu('import_xlsx'),
+                ),
+              ],
+            ),
+            PlatformMenuItemGroup(
+              members: [
+                PlatformMenuItem(
+                  label: 'Export XLSX',
+                  onSelected: () => _handleFileMenu('export_xlsx'),
+                ),
+                PlatformMenuItem(
+                  label: 'Export CSV',
+                  onSelected: () => _handleFileMenu('export_csv'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        PlatformMenu(
+          label: 'Window',
+          menus: [
+            PlatformMenuItemGroup(
+              members: [
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.minimizeWindow),
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.zoomWindow),
+              ],
+            ),
+            PlatformMenuItemGroup(
+              members: [
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.toggleFullScreen),
+                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.arrangeWindowsInFront),
+              ],
+            ),
+          ],
+        ),
+      ],
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Spreadsheet AI'),
+        ),
+        body: Row(
+          children: [
+            SizedBox(
+              width: 200,
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text('Tables', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      children: _tables.map((table) => ListTile(
+                        title: Text(table.name),
+                        selected: table.name == _selectedTable,
+                        onTap: () => _selectTable(table.name),
+                      )).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: _tableData == null
+                  ? const Center(child: Text('No table selected'))
+                  : TableWidget(data: _tableData!),
+            ),
+          ],
+        ),
       ),
     );
   }
