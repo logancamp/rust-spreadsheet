@@ -38,6 +38,7 @@ dependencies:
   freezed_annotation: ^3.1.0
   rust_lib_spreadsheet_ai:
     path: rust_builder
+  file_picker: ^10.3.10
 
 dev_dependencies:
   flutter_test:

@@ -1,3 +1,36 @@
+fn deduplicate_headers(headers: Vec<String>) -> Vec<String> {
+    let mut seen: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    headers.into_iter().enumerate().map(|(i, name)| {
+        let name = if name.trim().is_empty() {
+            format!("col_{}", i)
+        } else {
+            name
+        };
+        let count = seen.entry(name.clone()).or_insert(0);
+        let result = if *count == 0 {
+            name.clone()
+        } else {
+            format!("{}_{}", name, count)
+        };
+        *count += 1;
+        result
+    }).collect()
+}
+
+fn fix_dataframe_columns(df: DataFrame) -> Result<DataFrame, AppError> {
+    let headers: Vec<String> = df.get_column_names()
+        .iter().map(|s| s.to_string()).collect();
+    let deduped = deduplicate_headers(headers);
+    let mut df = df;
+    for (i, name) in deduped.iter().enumerate() {
+        let old_name = df.get_column_names()[i].to_string();
+        if old_name != *name {
+            df.rename(&old_name, name.into())?;
+        }
+    }
+    Ok(df)
+}
+
 use polars::prelude::*;
 use std::path::Path;
 use calamine::{open_workbook, Reader, Xlsx};
@@ -21,6 +54,7 @@ pub fn load_csv(path: impl AsRef<Path>) -> Result<TableObject, AppError> {
         .try_into_reader_with_file_path(Some(path.to_path_buf()))?
         .finish()?;
 
+    let df = fix_dataframe_columns(df)?;
     Ok(TableObject::new(table_name, (0.0, 0.0), df))
 }
 
@@ -33,6 +67,7 @@ pub fn load_csv_str(name: &str, content: &str) -> Result<TableObject, AppError> 
         .into_reader_with_file_handle(cursor)
         .finish()?;
 
+    let df = fix_dataframe_columns(df)?;
     Ok(TableObject::new(name.to_string(), (0.0, 0.0), df))
 }
 
@@ -53,8 +88,8 @@ pub fn load_xlsx(path: impl AsRef<Path>) -> Result<Vec<TableObject>, AppError> {
         let mut rows = sheet.rows();
 
         let headers: Vec<String> = match rows.next() {
-            Some(row) => row.iter().map(|c| c.to_string()).collect(),
-            None => continue, // skip empty sheets
+            Some(row) => deduplicate_headers(row.iter().map(|c| c.to_string()).collect()),
+            None => continue,
         };
 
         let data_rows: Vec<Vec<String>> = rows
@@ -73,6 +108,7 @@ pub fn load_xlsx(path: impl AsRef<Path>) -> Result<Vec<TableObject>, AppError> {
         }).collect();
 
         let df = DataFrame::new_infer_height(series)?;
+        let df = fix_dataframe_columns(df)?;
         tables.push(TableObject::new(sheet_name, (0.0, 0.0), df));
     }
 
@@ -101,5 +137,22 @@ mod tests {
     fn test_load_csv_str_name() {
         let table = load_csv_str("companies", SAMPLE_CSV).unwrap();
         assert_eq!(table.name(), "companies");
+    }
+
+    #[test]
+    fn test_deduplicate_headers() {
+        let headers = vec![
+            "name".to_string(),
+            "name".to_string(),
+            "".to_string(),
+            "revenue".to_string(),
+            "name".to_string(),
+        ];
+        let result = deduplicate_headers(headers);
+        assert_eq!(result[0], "name");
+        assert_eq!(result[1], "name_1");
+        assert_eq!(result[2], "col_2");
+        assert_eq!(result[3], "revenue");
+        assert_eq!(result[4], "name_2");
     }
 }
