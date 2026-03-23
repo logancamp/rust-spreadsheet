@@ -56,6 +56,21 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
   /// Menu Bar Function
   Future<void> _handleFileMenu(String value) async {
     switch (value) {
+      case 'open':
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['sai'],
+        );
+        if (result != null) {
+          final path = result.files.single.path!;
+          BridgeService.openSai(path);
+          setState(() {
+            _currentPath = path;
+            _selectedTable = null;
+          });
+          _refreshTables();
+        }
+        break;
       case 'import_csv':
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
@@ -126,6 +141,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
             ),
             onSelected: (value) => _handleFileMenu(value), // menu bar select pass
             itemBuilder: (context) => [
+              const PopupMenuItem(value: 'open', child: Text('Open (.sai)')),
               const PopupMenuItem(value: 'import_csv', child: Text('Import CSV')),
               const PopupMenuItem(value: 'import_xlsx', child: Text('Import XLSX')),
               const PopupMenuDivider(),
