@@ -48,26 +48,49 @@ pub fn load_csv(path: impl AsRef<Path>) -> Result<TableObject, AppError> {
         .unwrap_or("table")
         .to_string();
 
-    let df = CsvReadOptions::default()
-        .with_has_header(true)
-        .with_infer_schema_length(Some(100))
-        .try_into_reader_with_file_path(Some(path.to_path_buf()))?
-        .finish()?;
+    // Read raw bytes and fix headers before Polars sees them
+    let content = std::fs::read_to_string(path)?;
+    let mut lines = content.lines();
 
-    let df = fix_dataframe_columns(df)?;
-    Ok(TableObject::new(table_name, (0.0, 0.0), df))
-}
+    let raw_headers: Vec<String> = match lines.next() {
+        Some(header_line) => header_line.split(',').map(|s| s.trim().to_string()).collect(),
+        None => return Err(AppError::Schema("Empty CSV file".to_string())),
+    };
+    let clean_headers = deduplicate_headers(raw_headers);
 
-// str for testing
-pub fn load_csv_str(name: &str, content: &str) -> Result<TableObject, AppError> {
-    let cursor = std::io::Cursor::new(content.as_bytes().to_vec());
+    // Rebuild CSV with clean headers
+    let rest: String = lines.collect::<Vec<&str>>().join("\n");
+    let clean_csv = format!("{}\n{}", clean_headers.join(","), rest);
+
+    let cursor = std::io::Cursor::new(clean_csv.as_bytes().to_vec());
     let df = CsvReadOptions::default()
         .with_has_header(true)
         .with_infer_schema_length(Some(100))
         .into_reader_with_file_handle(cursor)
         .finish()?;
 
-    let df = fix_dataframe_columns(df)?;
+    Ok(TableObject::new(table_name, (0.0, 0.0), df))
+}
+
+pub fn load_csv_str(name: &str, content: &str) -> Result<TableObject, AppError> {
+    let mut lines = content.lines();
+
+    let raw_headers: Vec<String> = match lines.next() {
+        Some(header_line) => header_line.split(',').map(|s| s.trim().to_string()).collect(),
+        None => return Err(AppError::Schema("Empty CSV content".to_string())),
+    };
+    let clean_headers = deduplicate_headers(raw_headers);
+
+    let rest: String = lines.collect::<Vec<&str>>().join("\n");
+    let clean_csv = format!("{}\n{}", clean_headers.join(","), rest);
+
+    let cursor = std::io::Cursor::new(clean_csv.as_bytes().to_vec());
+    let df = CsvReadOptions::default()
+        .with_has_header(true)
+        .with_infer_schema_length(Some(100))
+        .into_reader_with_file_handle(cursor)
+        .finish()?;
+
     Ok(TableObject::new(name.to_string(), (0.0, 0.0), df))
 }
 

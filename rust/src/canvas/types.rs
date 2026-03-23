@@ -82,12 +82,12 @@ pub struct ColumnSchema {
     nullable: bool,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct TableMetadata {
-    row_meta: Option<DataFrame>,
-    column_meta: Option<DataFrame>,
-    last_analysed: Option<DateTime<Utc>>,
+    pub source_path: Option<String>,
+    pub row_meta: Option<DataFrame>,
+    pub column_meta: Option<DataFrame>,
+    pub last_analysed: Option<DateTime<Utc>>,
 }
 
 impl Canvas {
@@ -100,6 +100,51 @@ impl Canvas {
             modified_at: Utc::now(),
             snap_to_grid: true,
         }
+    }
+
+    pub fn add_or_replace_table(&mut self, mut table: TableObject) {
+        // check if a table with this name already exists
+        let existing_pos = self.objects.iter().position(|o| match o {
+            SheetObject::Table(t) => t.name() == table.name(),
+        });
+
+        match existing_pos {
+            Some(pos) => {
+                // same source path → replace (re-import)
+                let existing_source = match &self.objects[pos] {
+                    SheetObject::Table(t) => t.source_path().map(|s| s.to_string()),
+                };
+
+                let same_source = match (&existing_source, table.source_path()) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                };
+
+                if same_source {
+                    self.objects[pos] = SheetObject::Table(table);
+                } else {
+                    // deduplicate name
+                    let base_name = table.name().to_string();
+                    let mut counter = 1u32;
+                    loop {
+                        let candidate = format!("{}_{}", base_name, counter);
+                        let taken = self.objects.iter().any(|o| match o {
+                            SheetObject::Table(t) => t.name() == candidate,
+                        });
+                        if !taken {
+                            table.rename(candidate);
+                            break;
+                        }
+                        counter += 1;
+                    }
+                    self.objects.push(SheetObject::Table(table));
+                }
+            }
+            None => {
+                self.objects.push(SheetObject::Table(table));
+            }
+        }
+        self.modified_at = Utc::now();
     }
 
     pub fn add_object(&mut self, obj: SheetObject) {
@@ -133,6 +178,19 @@ impl TableObject {
             metadata: TableMetadata::default(),
             schema,
         }
+    }
+
+    pub fn rename(&mut self, name: String) {
+        self.name = name;
+    }
+
+    pub fn source_path(&self) -> Option<&str> {
+        self.metadata.source_path.as_deref()
+    }
+
+    pub fn with_source_path(mut self, path: &str) -> Self {
+        self.metadata.source_path = Some(path.to_string());
+        self
     }
 
     pub fn name(&self) -> &str {
