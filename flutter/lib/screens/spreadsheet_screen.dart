@@ -172,12 +172,12 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                 PlatformMenuItem(
                   label: 'New',
                   shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
-                  onSelected: () => _handleFileMenu('new'),
+                  onSelected: () async => await _handleFileMenu('new'),
                 ),
                 PlatformMenuItem(
                   label: 'Open',
                   shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
-                  onSelected: () => _handleFileMenu('open'),
+                  onSelected: () async => await _handleFileMenu('open'),
                 ),
               ],
             ),
@@ -186,12 +186,12 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                 PlatformMenuItem(
                   label: 'Save',
                   shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true),
-                  onSelected: () => _handleFileMenu('save'),
+                  onSelected: () async => await _handleFileMenu('save'),
                 ),
                 PlatformMenuItem(
                   label: 'Save As',
                   shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true),
-                  onSelected: () => _handleFileMenu('save_as'),
+                  onSelected: () async => await _handleFileMenu('save_as'),
                 ),
               ],
             ),
@@ -199,11 +199,11 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
               members: [
                 PlatformMenuItem(
                   label: 'Import CSV',
-                  onSelected: () => _handleFileMenu('import_csv'),
+                  onSelected: () async => await _handleFileMenu('import_csv'),
                 ),
                 PlatformMenuItem(
                   label: 'Import XLSX',
-                  onSelected: () => _handleFileMenu('import_xlsx'),
+                  onSelected: () async => await _handleFileMenu('import_xlsx'),
                 ),
               ],
             ),
@@ -211,11 +211,11 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
               members: [
                 PlatformMenuItem(
                   label: 'Export XLSX',
-                  onSelected: () => _handleFileMenu('export_xlsx'),
+                  onSelected: () async => await _handleFileMenu('export_xlsx'),
                 ),
                 PlatformMenuItem(
                   label: 'Export CSV',
-                  onSelected: () => _handleFileMenu('export_csv'),
+                  onSelected: () async => await _handleFileMenu('export_csv'),
                 ),
               ],
             ),
@@ -240,36 +240,66 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         ),
       ],
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Spreadsheet AI'),
-        ),
-        body: Row(
+        body: Column(
           children: [
-            SizedBox(
-              width: 200,
-              child: Column(
+            /// Toolbar
+            Container(
+              height: 40,
+              color: Colors.grey[200],
+              child: Row(
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text('Tables', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
+                  IconButton(icon: const Icon(Icons.format_bold), onPressed: null, tooltip: 'Bold'),
+                  IconButton(icon: const Icon(Icons.format_italic), onPressed: null, tooltip: 'Italic'),
+                  IconButton(icon: const Icon(Icons.format_underline), onPressed: null, tooltip: 'Underline'),
+                  const VerticalDivider(width: 1),
+                  IconButton(icon: const Icon(Icons.format_align_left), onPressed: null, tooltip: 'Align Left'),
+                  IconButton(icon: const Icon(Icons.format_align_center), onPressed: null, tooltip: 'Center'),
+                  IconButton(icon: const Icon(Icons.format_align_right), onPressed: null, tooltip: 'Align Right'),
+                ],
+              ),
+            ),
+            /// Middle — sidebar + content
+            Expanded(
+              child: Row(
+                children: [
                   Expanded(
-                    child: ListView(
-                      children: _tables.map((table) => ListTile(
-                        title: Text(table.name),
-                        selected: table.name == _selectedTable,
-                        onTap: () => _selectTable(table.name),
-                      )).toList(),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _tableData == null
+                              ? const Center(child: Text('No table selected'))
+                              : TableWidget(data: _tableData!),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-            const VerticalDivider(width: 1),
-            Expanded(
-              child: _tableData == null
-                  ? const Center(child: Text('No table selected'))
-                  : TableWidget(data: _tableData!),
+            /// Sheet tabs
+            Container(
+              height: 36,
+              color: Colors.grey[100],
+              child: Row(
+                children: _tables.map((table) => GestureDetector(
+                  onTap: () => _selectTable(table.name),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: table.name == _selectedTable
+                              ? Colors.green
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(table.name),
+                  ),
+                )).toList(),
+              ),
             ),
           ],
         ),
