@@ -28,6 +28,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 
                   @protected String dco_decode_String(dynamic raw);
 
+@protected double dco_decode_f_32(dynamic raw);
+
 @protected List<String> dco_decode_list_String(dynamic raw);
 
 @protected List<List<String>> dco_decode_list_list_String(dynamic raw);
@@ -35,6 +37,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 @protected Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
 @protected List<TableInfo> dco_decode_list_table_info(dynamic raw);
+
+@protected (double,double) dco_decode_record_f_32_f_32(dynamic raw);
 
 @protected TableData dco_decode_table_data(dynamic raw);
 
@@ -48,6 +52,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 
 @protected String sse_decode_String(SseDeserializer deserializer);
 
+@protected double sse_decode_f_32(SseDeserializer deserializer);
+
 @protected List<String> sse_decode_list_String(SseDeserializer deserializer);
 
 @protected List<List<String>> sse_decode_list_list_String(SseDeserializer deserializer);
@@ -55,6 +61,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 @protected Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
 @protected List<TableInfo> sse_decode_list_table_info(SseDeserializer deserializer);
+
+@protected (double,double) sse_decode_record_f_32_f_32(SseDeserializer deserializer);
 
 @protected TableData sse_decode_table_data(SseDeserializer deserializer);
 
@@ -72,6 +80,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 
 @protected void sse_encode_String(String self, SseSerializer serializer);
 
+@protected void sse_encode_f_32(double self, SseSerializer serializer);
+
 @protected void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
 @protected void sse_encode_list_list_String(List<List<String>> self, SseSerializer serializer);
@@ -79,6 +89,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 @protected void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer);
 
 @protected void sse_encode_list_table_info(List<TableInfo> self, SseSerializer serializer);
+
+@protected void sse_encode_record_f_32_f_32((double,double) self, SseSerializer serializer);
 
 @protected void sse_encode_table_data(TableData self, SseSerializer serializer);
 

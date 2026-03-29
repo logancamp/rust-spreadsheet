@@ -41,4 +41,12 @@ class BridgeService {
   static bridge.TableData getTableData(String tableName) {
     return bridge.getTableData(tableName: tableName);
   }
+
+  static List<String> getSheetsList() {
+    return bridge.getSheetsList();
+}
+
+  static void switchSheet(String name) {
+      bridge.switchSheet(name: name);
+  }
 }

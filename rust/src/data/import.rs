@@ -1,4 +1,11 @@
-fn deduplicate_headers(headers: Vec<String>) -> Vec<String> {
+use polars::prelude::*;
+use std::path::Path;
+use calamine::{open_workbook, Reader, Xlsx};
+
+use crate::canvas::types::TableObject;
+use crate::error::AppError;
+
+pub fn deduplicate_headers(headers: Vec<String>) -> Vec<String> {
     let mut seen: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     headers.into_iter().enumerate().map(|(i, name)| {
         let name = if name.trim().is_empty() {
@@ -17,30 +24,9 @@ fn deduplicate_headers(headers: Vec<String>) -> Vec<String> {
     }).collect()
 }
 
-fn fix_dataframe_columns(df: DataFrame) -> Result<DataFrame, AppError> {
-    let headers: Vec<String> = df.get_column_names()
-        .iter().map(|s| s.to_string()).collect();
-    let deduped = deduplicate_headers(headers);
-    let mut df = df;
-    for (i, name) in deduped.iter().enumerate() {
-        let old_name = df.get_column_names()[i].to_string();
-        if old_name != *name {
-            df.rename(&old_name, name.into())?;
-        }
-    }
-    Ok(df)
-}
+pub fn load_csv(path: impl AsRef<Path>) -> Result<Vec<TableObject>, AppError> {
+    use crate::canvas::grid::RawGrid;
 
-use polars::prelude::*;
-use std::path::Path;
-use calamine::{open_workbook, Reader, Xlsx};
-
-use crate::canvas::types::TableObject;
-use crate::error::AppError;
-
-/// Load sheet from an CSV file as table object.
-/// TODO: run grid detection per sheet to split multiple tables on one sheet.
-pub fn load_csv(path: impl AsRef<Path>) -> Result<TableObject, AppError> {
     let path = path.as_ref();
     let table_name = path
         .file_stem()
@@ -48,28 +34,43 @@ pub fn load_csv(path: impl AsRef<Path>) -> Result<TableObject, AppError> {
         .unwrap_or("table")
         .to_string();
 
-    // Read raw bytes and fix headers before Polars sees them
     let content = std::fs::read_to_string(path)?;
-    let mut lines = content.lines();
+    let rows: Vec<Vec<String>> = content.lines()
+        .map(|line| line.split(',').map(|s| s.trim().to_string()).collect())
+        .collect();
 
-    let raw_headers: Vec<String> = match lines.next() {
-        Some(header_line) => header_line.split(',').map(|s| s.trim().to_string()).collect(),
-        None => return Err(AppError::Schema("Empty CSV file".to_string())),
-    };
-    let clean_headers = deduplicate_headers(raw_headers);
+    if rows.is_empty() {
+        return Err(AppError::Schema("Empty CSV file".to_string()));
+    }
 
-    // Rebuild CSV with clean headers
-    let rest: String = lines.collect::<Vec<&str>>().join("\n");
-    let clean_csv = format!("{}\n{}", clean_headers.join(","), rest);
+    let num_rows = rows.len() as u32;
+    let num_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0) as u32;
 
-    let cursor = std::io::Cursor::new(clean_csv.as_bytes().to_vec());
-    let df = CsvReadOptions::default()
-        .with_has_header(true)
-        .with_infer_schema_length(Some(100))
-        .into_reader_with_file_handle(cursor)
-        .finish()?;
+    let mut grid = RawGrid::new(num_rows, num_cols);
+    for (row_idx, row) in rows.iter().enumerate() {
+        for (col_idx, val) in row.iter().enumerate() {
+            grid.set(row_idx as u32, col_idx as u32, val.clone());
+        }
+    }
 
-    Ok(TableObject::new(table_name, (0.0, 0.0), df))
+    let islands = grid.find_islands()?;
+
+    if islands.is_empty() {
+        return Err(AppError::Schema("Empty CSV file".to_string()));
+    }
+
+    let mut tables = Vec::new();
+    for (idx, island) in islands.iter().enumerate() {
+        let table_name = if idx == 0 {
+            table_name.clone()
+        } else {
+            format!("{}_{}", table_name, idx)
+        };
+        let table = grid.island_to_table(island, &table_name, &table_name)?;
+        tables.push(table);
+    }
+
+    Ok(tables)
 }
 
 pub fn load_csv_str(name: &str, content: &str) -> Result<TableObject, AppError> {
@@ -95,51 +96,65 @@ pub fn load_csv_str(name: &str, content: &str) -> Result<TableObject, AppError> 
 }
 
 /// Load all sheets from an XLSX file.
-/// Each sheet becomes a separate TableObject.
-/// TODO: run grid detection per sheet to split multiple tables on one sheet.
-pub fn load_xlsx(path: impl AsRef<Path>) -> Result<Vec<TableObject>, AppError> {
+/// Each sheet gets island detection — multiple tables per sheet supported.
+pub struct SheetTable {
+    pub sheet_name: String,
+    pub table: TableObject,
+}
+
+pub fn load_xlsx(path: impl AsRef<Path>) -> Result<Vec<SheetTable>, AppError> {
+    use crate::canvas::grid::RawGrid;
+
     let path = path.as_ref();
     let mut workbook: Xlsx<_> = open_workbook(path)?;
     let sheet_names = workbook.sheet_names().to_vec();
-    let mut tables = Vec::new();
+    let mut results = Vec::new();
 
     for sheet_name in sheet_names {
         let sheet = workbook
             .worksheet_range(&sheet_name)
             .map_err(|e| AppError::Calamine(e))?;
 
-        let mut rows = sheet.rows();
-
-        let headers: Vec<String> = match rows.next() {
-            Some(row) => deduplicate_headers(row.iter().map(|c| c.to_string()).collect()),
-            None => continue,
-        };
-
-        let data_rows: Vec<Vec<String>> = rows
+        let rows: Vec<Vec<String>> = sheet.rows()
             .map(|row| row.iter().map(|c| c.to_string()).collect())
             .collect();
 
-        if data_rows.is_empty() {
-            continue; // skip header-only sheets
+        if rows.is_empty() { continue; }
+
+        let num_rows = rows.len() as u32;
+        let num_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0) as u32;
+
+        if num_cols == 0 { continue; }
+
+        let mut grid = RawGrid::new(num_rows, num_cols);
+        for (row_idx, row) in rows.iter().enumerate() {
+            for (col_idx, val) in row.iter().enumerate() {
+                grid.set(row_idx as u32, col_idx as u32, val.clone());
+            }
         }
 
-        let series: Vec<Column> = headers.iter().enumerate().map(|(i, name)| {
-            let values: Vec<String> = data_rows.iter()
-                .map(|row| row.get(i).cloned().unwrap_or_default())
-                .collect();
-            Column::new(name.into(), values)
-        }).collect();
+        let islands = grid.find_islands()?;
+        if islands.is_empty() { continue; }
 
-        let df = DataFrame::new_infer_height(series)?;
-        let df = fix_dataframe_columns(df)?;
-        tables.push(TableObject::new(sheet_name, (0.0, 0.0), df));
+        for (idx, island) in islands.iter().enumerate() {
+            let table_name = if idx == 0 {
+                sheet_name.clone()
+            } else {
+                format!("{}_{}", sheet_name, idx)
+            };
+            let table = grid.island_to_table(island, &sheet_name, &table_name)?;
+            results.push(SheetTable {
+                sheet_name: sheet_name.clone(),
+                table,
+            });
+        }
     }
 
-    if tables.is_empty() {
+    if results.is_empty() {
         return Err(AppError::Schema("No valid sheets found in XLSX file".to_string()));
     }
 
-    Ok(tables)
+    Ok(results)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

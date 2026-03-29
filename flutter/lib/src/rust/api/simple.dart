@@ -6,6 +6,8 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `validate_existing_path`, `validate_path`
+
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
 
@@ -17,6 +19,12 @@ void openSai({required String path}) =>
 
 void saveSai({required String path}) =>
     RustLib.instance.api.crateApiSimpleSaveSai(path: path);
+
+List<String> getSheetsList() =>
+    RustLib.instance.api.crateApiSimpleGetSheetsList();
+
+void switchSheet({required String name}) =>
+    RustLib.instance.api.crateApiSimpleSwitchSheet(name: name);
 
 void importCsv({required String path}) =>
     RustLib.instance.api.crateApiSimpleImportCsv(path: path);
@@ -36,6 +44,24 @@ List<TableInfo> getCanvasTables() =>
 
 TableData getTableData({required String tableName}) =>
     RustLib.instance.api.crateApiSimpleGetTableData(tableName: tableName);
+
+void setTablePosition(
+        {required String tableName, required double x, required double y}) =>
+    RustLib.instance.api
+        .crateApiSimpleSetTablePosition(tableName: tableName, x: x, y: y);
+
+void editCell(
+        {required String sheetName,
+        required String tableName,
+        required String colName,
+        required int row,
+        required String value}) =>
+    RustLib.instance.api.crateApiSimpleEditCell(
+        sheetName: sheetName,
+        tableName: tableName,
+        colName: colName,
+        row: row,
+        value: value);
 
 class TableData {
   final String name;
@@ -65,15 +91,18 @@ class TableInfo {
   final String name;
   final int rows;
   final int cols;
+  final (double, double) position;
 
   const TableInfo({
     required this.name,
     required this.rows,
     required this.cols,
+    required this.position,
   });
 
   @override
-  int get hashCode => name.hashCode ^ rows.hashCode ^ cols.hashCode;
+  int get hashCode =>
+      name.hashCode ^ rows.hashCode ^ cols.hashCode ^ position.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -82,5 +111,6 @@ class TableInfo {
           runtimeType == other.runtimeType &&
           name == other.name &&
           rows == other.rows &&
-          cols == other.cols;
+          cols == other.cols &&
+          position == other.position;
 }

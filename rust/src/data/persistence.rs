@@ -3,11 +3,17 @@ use polars::prelude::*;
 use std::io::Cursor;
 use std::path::Path;
 use std::ffi::OsStr;
+use indexmap::IndexMap;
 
-use crate::canvas::types::{Canvas, SheetObject, TableObject};
+use crate::canvas::types::{Canvas, SheetObject, TableObject, Workbook};
 use crate::error::AppError;
 
-// derive custom file type (.sai) for read/write native efficiency
+#[derive(Serialize, Deserialize)]
+pub struct SavedWorkbook {
+    pub active_sheet: Option<String>,
+    pub sheets: IndexMap<String, SavedCanvas>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct SavedCanvas {
     pub name: String,
@@ -20,7 +26,7 @@ pub struct SavedTable {
     pub name: String,
     pub position: (f32, f32),
     pub shape: (u32, u32),
-    pub parquet_bytes: Vec<u8>,  // the DataFrame serialized as Parquet
+    pub parquet_bytes: Vec<u8>,
 }
 
 impl SavedCanvas {
@@ -67,55 +73,87 @@ impl SavedCanvas {
     }
 }
 
-pub fn save_canvas(canvas: &Canvas, path: impl AsRef<Path>) -> Result<(), AppError> {
+impl SavedWorkbook {
+    pub fn from_workbook(workbook: &Workbook) -> Result<Self, AppError> {
+        let mut sheets: IndexMap<String, SavedCanvas> = IndexMap::new();
+        for (name, canvas) in &workbook.sheets {
+            sheets.insert(name.clone(), SavedCanvas::from_canvas(canvas)?);
+        }
+        Ok(SavedWorkbook {
+            active_sheet: workbook.active_sheet.clone(),
+            sheets,
+        })
+    }
+
+    pub fn into_workbook(self) -> Result<Workbook, AppError> {
+        let mut sheets: IndexMap<String, Canvas> = IndexMap::new();
+        for (name, saved_canvas) in self.sheets {
+            sheets.insert(name, saved_canvas.into_canvas()?);
+        }
+        Ok(Workbook {
+            active_sheet: self.active_sheet,
+            sheets,
+        })
+    }
+}
+
+pub fn save_workbook(workbook: &Workbook, path: impl AsRef<Path>) -> Result<(), AppError> {
     if path.as_ref().extension() != Some(OsStr::new("sai")) {
         return Err(AppError::Schema("File must have .sai extension".to_string()));
     }
-
-    let saved = SavedCanvas::from_canvas(canvas)?;
+    let saved = SavedWorkbook::from_workbook(workbook)?;
     let bytes = bincode::serialize(&saved)
         .map_err(|e| AppError::Schema(e.to_string()))?;
     std::fs::write(path, bytes)?;
     Ok(())
 }
 
-pub fn load_canvas(path: impl AsRef<Path>) -> Result<Canvas, AppError> {
+pub fn load_workbook(path: impl AsRef<Path>) -> Result<Workbook, AppError> {
     if path.as_ref().extension() != Some(OsStr::new("sai")) {
         return Err(AppError::Schema("File must have .sai extension".to_string()));
     }
-
     let bytes = std::fs::read(path)?;
-    let saved: SavedCanvas = bincode::deserialize(&bytes)
+    let saved: SavedWorkbook = bincode::deserialize(&bytes)
         .map_err(|e| AppError::Schema(e.to_string()))?;
-    saved.into_canvas()
+    saved.into_workbook()
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canvas::state::{init_canvas, canvas_load_csv_str};
-    use crate::canvas::state::with_canvas;
+    use crate::canvas::state::{new_sheet, canvas_load_csv_str, read_canvas, read_workbook, write_workbook};
     use tempfile::TempDir;
     use serial_test::serial;
+
+    const CSV: &str = "name,revenue,active\nAcme,150000,true\nGlobex,320000,false\nInitech,98000,true\n";
 
     #[test]
     #[serial]
     fn test_save_and_load_sai() {
-        let csv = "name,revenue,active\nAcme,150000,true\nGlobex,320000,false\nInitech,98000,true\n";
-
-        init_canvas("test").unwrap();
-        canvas_load_csv_str("companies", csv).unwrap();
+        new_sheet("test").unwrap();
+        canvas_load_csv_str("companies", CSV).unwrap();
 
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.sai");
 
-        with_canvas(|canvas| {
-            save_canvas(canvas, &path).unwrap();
+        read_canvas(|canvas| {
+            // save just this canvas for the test
+            let saved = SavedCanvas::from_canvas(canvas).unwrap();
+            let wb = SavedWorkbook {
+                active_sheet: Some("test".to_string()),
+                sheets: {
+                    let mut m = IndexMap::new();
+                    m.insert("test".to_string(), saved);
+                    m
+                },
+            };
+            let bytes = bincode::serialize(&wb).unwrap();
+            std::fs::write(&path, bytes).unwrap();
         }).unwrap();
 
-        let canvas = load_canvas(&path).unwrap();
+        let workbook = load_workbook(&path).unwrap();
+        let canvas = workbook.sheets.get("test").unwrap();
         let table = canvas.get_table("companies").unwrap();
         assert_eq!(table.name(), "companies");
         assert_eq!(table.row_count(), 3usize);
@@ -123,25 +161,56 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_save_rejects_wrong_extension() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.xlsx");
-
-        init_canvas("test").unwrap();
-
-        with_canvas(|canvas| {
-            let result = save_canvas(canvas, &path);
-            assert!(result.is_err());
-        }).unwrap();
+        let wb = Workbook::new();
+        let result = save_workbook(&wb, &path);
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_load_rejects_wrong_extension() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.csv");
-
-        let result = load_canvas(&path);
+        let result = load_workbook(&path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn test_save_and_load_multi_sheet_sai() {
+        write_workbook(|wb| {
+            wb.sheets.clear();
+            wb.active_sheet = None;
+        }).unwrap();
+
+        canvas_load_csv_str("sheet1", "a,b\n1,2\n").unwrap();
+        canvas_load_csv_str("sheet2", "c,d\n3,4\n").unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("multi.sai");
+
+        read_workbook(|wb| save_workbook(wb, &path)).unwrap().unwrap();
+
+        let workbook = load_workbook(&path).unwrap();
+        assert_eq!(workbook.sheets.len(), 2);
+        assert!(workbook.sheets.contains_key("sheet1"));
+        assert!(workbook.sheets.contains_key("sheet2"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_active_sheet_persists() {
+        new_sheet("first").unwrap();
+        new_sheet("second").unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("active.sai");
+
+        read_workbook(|wb| save_workbook(wb, &path)).unwrap().unwrap();
+
+        let workbook = load_workbook(&path).unwrap();
+        assert_eq!(workbook.active_sheet, Some("second".to_string()));
     }
 }

@@ -1,15 +1,23 @@
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use polars::prelude::DataFrame;
+use polars::prelude::{DataFrame, NamedFrom};
 use std::collections::HashMap;
+use indexmap::IndexMap;
+use crate::error::AppError;
+
+#[derive(Debug, Clone)]
+pub struct Workbook {
+    pub sheets: IndexMap<String, Canvas>,
+    pub active_sheet: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Canvas {
     id: Uuid,
     name: String,
-    objects: Vec<SheetObject>,
+    pub(crate) objects: Vec<SheetObject>,
     created_at: DateTime<Utc>,
-    modified_at: DateTime<Utc>,
+    pub(crate) modified_at: DateTime<Utc>,
     snap_to_grid: bool,
 }
 
@@ -90,6 +98,15 @@ pub(crate) struct TableMetadata {
     pub last_analysed: Option<DateTime<Utc>>,
 }
 
+impl Workbook {
+    pub fn new() -> Self {
+        Self {
+            sheets: IndexMap::new(),
+            active_sheet: None,
+        }
+    }
+}
+
 impl Canvas {
     pub fn new(name: String) -> Self {
         Self {
@@ -100,6 +117,13 @@ impl Canvas {
             modified_at: Utc::now(),
             snap_to_grid: true,
         }
+    }
+
+    pub fn retain_tables<F>(&mut self, f: F)
+    where
+        F: FnMut(&SheetObject) -> bool
+    {
+        self.objects.retain(f);
     }
 
     pub fn add_or_replace_table(&mut self, mut table: TableObject) {
@@ -147,6 +171,13 @@ impl Canvas {
         self.modified_at = Utc::now();
     }
 
+    pub fn get_table_mut(&mut self, name: &str) -> Option<&mut TableObject> {
+        self.objects.iter_mut().find_map(|o| match o {
+            SheetObject::Table(t) if t.name == name => Some(t),
+            _ => None,
+        })
+    }
+
     pub fn add_object(&mut self, obj: SheetObject) {
         self.objects.push(obj);
     }
@@ -178,6 +209,10 @@ impl TableObject {
             metadata: TableMetadata::default(),
             schema,
         }
+    }
+
+    pub fn set_position(&mut self, position: (f32, f32)) {
+        self.position = position;
     }
 
     pub fn rename(&mut self, name: String) {
@@ -219,6 +254,31 @@ impl TableObject {
     pub fn col_count(&self) -> usize {
         self.data.width()
     }
+
+    pub fn set_cell_value(&mut self, col_name: &str, row: usize, value: String) -> Result<(), AppError> {
+        let col = self.data.column(col_name)
+            .map_err(|e| AppError::Polars(e))?
+            .cast(&polars::prelude::DataType::String)
+            .map_err(|e| AppError::Polars(e))?;
+
+        let mut values: Vec<Option<String>> = col.str()
+            .map_err(|e| AppError::Polars(e))?
+            .into_iter()
+            .map(|v| v.map(|s| s.to_string()))
+            .collect();
+
+        if row >= values.len() {
+            return Err(AppError::Schema(format!("Row {} out of bounds", row)));
+        }
+
+        values[row] = Some(value);
+
+        let new_col = polars::prelude::Series::new(col_name.into(), values);
+        self.data.replace(col_name, new_col.into())
+            .map_err(|e| AppError::Polars(e))?;
+
+        Ok(())
+    }
 }
 
 impl TableSchema {
@@ -257,7 +317,7 @@ mod tests {
     use polars::prelude::*;
 
     #[test]
-    fn test_canvas_table_roundtrip() {
+    fn test_canvas_table_round_trip() {
         let df = df!(
             "name" => ["Alice", "Bob"],
             "age" => [30i32, 25]

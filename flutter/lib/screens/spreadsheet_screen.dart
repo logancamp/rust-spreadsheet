@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/bridge_service.dart';
 import 'package:spreadsheet_ai/src/rust/api/simple.dart';
-import '../widgets/table_widget.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import '../widgets/spreadsheet_grid.dart';
 
 class SpreadsheetScreen extends StatefulWidget {
   const SpreadsheetScreen({super.key});
@@ -13,7 +13,9 @@ class SpreadsheetScreen extends StatefulWidget {
 }
 
 class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
-  List<TableInfo> _tables = [];
+  List<String> _sheets = [];         // canvas/sheet names
+  String? _activeSheet;              // active sheet tab
+  List<TableInfo> _tables = [];      // islands in active sheet
   String? _selectedTable;
   TableData? _tableData;
   String? _currentPath;
@@ -24,13 +26,43 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
     BridgeService.newCanvas('Untitled');
   }
 
-  void _refreshTables() {
+  void _refreshSheets() {
+    final sheets = BridgeService.getSheetsList();
+    String? activeSheet = _activeSheet;
+    if (sheets.isNotEmpty && activeSheet == null) {
+      activeSheet = sheets.first;
+      BridgeService.switchSheet(activeSheet);
+    }
+    final tables = BridgeService.getCanvasTables();
+    String? selectedTable = _selectedTable;
+    TableData? tableData = _tableData;
+    if (tables.isNotEmpty && selectedTable == null) {
+      selectedTable = tables.first.name;
+      tableData = BridgeService.getTableData(selectedTable);
+    }
     setState(() {
-      _tables = BridgeService.getCanvasTables();
-      if (_tables.isNotEmpty && _selectedTable == null) {
-        _selectedTable = _tables.first.name;
-        _tableData = BridgeService.getTableData(_tables.first.name);
-      }
+      _sheets = sheets;
+      _activeSheet = activeSheet;
+      _tables = tables;
+      _selectedTable = selectedTable;
+      _tableData = tableData;
+    });
+  }
+
+  void _switchSheet(String name) {
+    BridgeService.switchSheet(name);
+    final tables = BridgeService.getCanvasTables();
+    String? selectedTable;
+    TableData? tableData;
+    if (tables.isNotEmpty) {
+      selectedTable = tables.first.name;
+      tableData = BridgeService.getTableData(selectedTable);
+    }
+    setState(() {
+      _activeSheet = name;
+      _selectedTable = selectedTable;
+      _tableData = tableData;
+      _tables = tables;
     });
   }
 
@@ -67,14 +99,17 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
           BridgeService.openSai(path);
           setState(() {
             _currentPath = path;
+            _activeSheet = null;
             _selectedTable = null;
           });
-          _refreshTables();
+          _refreshSheets();
         }
         break;
       case 'new':
         BridgeService.newCanvas('Untitled');
         setState(() {
+          _sheets = [];
+          _activeSheet = null;
           _tables = [];
           _selectedTable = null;
           _tableData = null;
@@ -89,8 +124,9 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         if (result != null) {
           final path = result.files.single.path!;
           BridgeService.importCsv(path);
+          setState(() => _activeSheet = null);
         }
-        _refreshTables();
+        _refreshSheets();
         break;
       case 'import_xlsx':
         final result2 = await FilePicker.platform.pickFiles(
@@ -100,8 +136,9 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         if (result2 != null) {
           final path = result2.files.single.path!;
           BridgeService.importXlsx(path);
+          setState(() => _activeSheet = null);
         }
-        _refreshTables();
+        _refreshSheets();
         break;
       case 'save':
         if (_currentPath != null) {
@@ -266,9 +303,10 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: _tableData == null
-                              ? const Center(child: Text('No table selected'))
-                              : TableWidget(data: _tableData!),
+                          child: SpreadsheetGrid(
+                            tables: _tables,
+                            tableData: _tables.map((t) => BridgeService.getTableData(t.name)).toList(),
+                          ),
                         ),
                       ],
                     ),
@@ -281,14 +319,14 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
               height: 36,
               color: Colors.grey[100],
               child: Row(
-                children: _tables.map((table) => GestureDetector(
-                  onTap: () => _selectTable(table.name),
+                children: _sheets.map((sheet) => GestureDetector(
+                  onTap: () => _switchSheet(sheet),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
                       border: Border(
                         top: BorderSide(
-                          color: table.name == _selectedTable
+                          color: sheet == _activeSheet
                               ? Colors.green
                               : Colors.transparent,
                           width: 2,
@@ -296,7 +334,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                       ),
                     ),
                     alignment: Alignment.center,
-                    child: Text(table.name),
+                    child: Text(sheet),
                   ),
                 )).toList(),
               ),

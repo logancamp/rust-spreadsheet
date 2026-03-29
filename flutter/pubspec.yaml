@@ -39,6 +39,7 @@ dependencies:
   rust_lib_spreadsheet_ai:
     path: rust_builder
   file_picker: ^10.3.10
+  two_dimensional_scrollables: ^0.4.1
 
 dev_dependencies:
   flutter_test:

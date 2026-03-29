@@ -1,5 +1,4 @@
 pub mod types;
 pub mod state;
-mod grid;
-
+pub mod grid;
 pub use types::*;
