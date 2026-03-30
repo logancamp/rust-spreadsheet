@@ -20,6 +20,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
   String? _currentPath;
   String _selectedCellAddress = '';
   String _selectedCellValue = '';
+  double _scale = 1.0;
 
   @override
   void initState() {
@@ -230,6 +231,8 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
               child: SpreadsheetGrid(
                 tables: _tables,
                 tableData: _tables.map((t) => BridgeService.getTableData(t.name)).toList(),
+                externalScale: _scale,
+                onScaleChanged: (s) => setState(() => _scale = s),
                 onCellSelected: (cell, value) {
                   if (cell == null) {
                     setState(() { _selectedCellAddress = ''; _selectedCellValue = ''; });
@@ -259,20 +262,60 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
               height: 36,
               color: Colors.grey[100],
               child: Row(
-                children: _sheets.map((sheet) => GestureDetector(
-                  onTap: () => _switchSheet(sheet),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      border: Border(top: BorderSide(
-                        color: sheet == _activeSheet ? Colors.green : Colors.transparent,
-                        width: 2,
-                      )),
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: _sheets.map((sheet) => GestureDetector(
+                        onTap: () => _switchSheet(sheet),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            border: Border(top: BorderSide(
+                              color: sheet == _activeSheet ? Colors.green : Colors.transparent,
+                              width: 2,
+                            )),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(sheet),
+                        ),
+                      )).toList(),
                     ),
-                    alignment: Alignment.center,
-                    child: Text(sheet),
                   ),
-                )).toList(),
+                  Container(
+                    width: 200,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      border: Border(left: BorderSide(color: Colors.grey[300]!, width: 1)),
+                    ),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => setState(() => _scale = 1.0),
+                          child: Text(
+                            '${(_scale * 100).round()}%',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 2,
+                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                            ),
+                            child: Slider(
+                              value: _scale.clamp(0.3, 4.0),
+                              min: 0.3,
+                              max: 4.0,
+                              activeColor: Colors.green,
+                              onChanged: (v) => setState(() => _scale = v),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

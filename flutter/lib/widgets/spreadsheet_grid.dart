@@ -9,6 +9,8 @@ class SpreadsheetGrid extends StatefulWidget {
   final List<TableData> tableData;
   final void Function((int, int)? cell, String value)? onCellSelected;
   final void Function((int, int)? start, (int, int)? end, String value)? onSelectionChanged;
+  final void Function(double)? onScaleChanged;
+  final double? externalScale;
 
   const SpreadsheetGrid({
     super.key,
@@ -16,6 +18,8 @@ class SpreadsheetGrid extends StatefulWidget {
     required this.tableData,
     this.onCellSelected,
     this.onSelectionChanged,
+    this.onScaleChanged,
+    this.externalScale,
   });
 
   @override
@@ -55,8 +59,17 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   @override
   void initState() {
     super.initState();
+    if (widget.externalScale != null) _scale = widget.externalScale!;
     _verticalScrollController.addListener(() => _scrollOffsetY = _verticalScrollController.offset);
     _horizontalScrollController.addListener(() => _scrollOffsetX = _horizontalScrollController.offset);
+  }
+
+  @override
+  void didUpdateWidget(SpreadsheetGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.externalScale != null && widget.externalScale != oldWidget.externalScale) {
+      setState(() => _scale = widget.externalScale!);
+    }
   }
 
   @override
@@ -115,7 +128,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   }
 
   void _handleTap(Offset localPosition) {
-    // Corner — select all toggle
     if (localPosition.dx < _scaledRowHeaderWidth && localPosition.dy < _scaledColHeaderHeight) {
       final isAllSelected = _selectionStart == (1, 1) && _selectionEnd == (999, 99);
       setState(() {
@@ -126,8 +138,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, '');
       return;
     }
-
-    // Col header
     final colHeader = _colHeaderAtOffset(localPosition);
     if (colHeader != null) {
       setState(() {
@@ -143,8 +153,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       widget.onSelectionChanged?.call((1, colHeader), (999, colHeader), '');
       return;
     }
-
-    // Row header
     final rowHeader = _rowHeaderAtOffset(localPosition);
     if (rowHeader != null) {
       setState(() {
@@ -160,8 +168,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       widget.onSelectionChanged?.call((rowHeader, 1), (rowHeader, 99), '');
       return;
     }
-
-    // Data cell
     final cell = _cellAtOffset(localPosition);
     if (cell == null) return;
     if (_isCommandHeld) {
@@ -285,6 +291,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
           final newScrollX = (focalPoint.dx + _scrollOffsetX) * (newScale / oldScale) - focalPoint.dx;
           final newScrollY = (focalPoint.dy + _scrollOffsetY) * (newScale / oldScale) - focalPoint.dy;
           setState(() => _scale = newScale);
+          widget.onScaleChanged?.call(newScale);
           if (_horizontalScrollController.hasClients) {
             _horizontalScrollController.jumpTo(newScrollX.clamp(0.0, _horizontalScrollController.position.maxScrollExtent));
           }
