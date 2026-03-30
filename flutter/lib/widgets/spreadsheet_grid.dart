@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:two_dimensional_scrollables/two_dimensional_scrollables.dart';
 import 'package:spreadsheet_ai/src/rust/api/simple.dart';
-import 'package:flutter/gestures.dart';
 
 class SpreadsheetGrid extends StatefulWidget {
   final List<TableInfo> tables;
@@ -56,12 +55,8 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   @override
   void initState() {
     super.initState();
-    _verticalScrollController.addListener(() {
-      _scrollOffsetY = _verticalScrollController.offset;
-    });
-    _horizontalScrollController.addListener(() {
-      _scrollOffsetX = _horizontalScrollController.offset;
-    });
+    _verticalScrollController.addListener(() => _scrollOffsetY = _verticalScrollController.offset);
+    _horizontalScrollController.addListener(() => _scrollOffsetX = _horizontalScrollController.offset);
   }
 
   @override
@@ -85,66 +80,54 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   int? _colHeaderAtOffset(Offset offset) {
     if (offset.dy >= _scaledColHeaderHeight) return null;
     if (offset.dx < _scaledRowHeaderWidth) return null;
-    final adjustedX = offset.dx + _scrollOffsetX;
-    return ((adjustedX - _scaledRowHeaderWidth) / _scaledCellWidth).floor() + 1;
+    return ((offset.dx + _scrollOffsetX - _scaledRowHeaderWidth) / _scaledCellWidth).floor() + 1;
   }
 
   int? _rowHeaderAtOffset(Offset offset) {
     if (offset.dx >= _scaledRowHeaderWidth) return null;
     if (offset.dy < _scaledColHeaderHeight) return null;
-    final adjustedY = offset.dy + _scrollOffsetY;
-    return ((adjustedY - _scaledColHeaderHeight) / _scaledCellHeight).floor() + 1;
+    return ((offset.dy + _scrollOffsetY - _scaledColHeaderHeight) / _scaledCellHeight).floor() + 1;
   }
 
   void _startAutoScrollIfNeeded(Offset position) {
     _autoScrollTimer?.cancel();
     const edgeSize = 40.0;
     const scrollSpeed = 10.0;
-
     double dx = 0;
     double dy = 0;
-
     if (position.dx < _scaledRowHeaderWidth + edgeSize) dx = -scrollSpeed;
     if (context.size != null && position.dx > context.size!.width - edgeSize) dx = scrollSpeed;
     if (position.dy < _scaledColHeaderHeight + edgeSize) dy = -scrollSpeed;
     if (context.size != null && position.dy > context.size!.height - edgeSize) dy = scrollSpeed;
-
     if (dx == 0 && dy == 0) return;
-
     _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
       if (dx != 0 && _horizontalScrollController.hasClients) {
         _horizontalScrollController.jumpTo(
-          (_horizontalScrollController.offset + dx)
-              .clamp(0, _horizontalScrollController.position.maxScrollExtent),
+          (_horizontalScrollController.offset + dx).clamp(0, _horizontalScrollController.position.maxScrollExtent),
         );
       }
       if (dy != 0 && _verticalScrollController.hasClients) {
         _verticalScrollController.jumpTo(
-          (_verticalScrollController.offset + dy)
-              .clamp(0, _verticalScrollController.position.maxScrollExtent),
+          (_verticalScrollController.offset + dy).clamp(0, _verticalScrollController.position.maxScrollExtent),
         );
       }
     });
   }
 
   void _handleTap(Offset localPosition) {
-    if (localPosition.dx < _scaledRowHeaderWidth &&
-        localPosition.dy < _scaledColHeaderHeight) {
+    // Corner — select all toggle
+    if (localPosition.dx < _scaledRowHeaderWidth && localPosition.dy < _scaledColHeaderHeight) {
       final isAllSelected = _selectionStart == (1, 1) && _selectionEnd == (999, 99);
       setState(() {
-        if (isAllSelected) {
-          _selectionStart = null;
-          _selectionEnd = null;
-        } else {
-          _selectionStart = (1, 1);
-          _selectionEnd = (999, 99);
-        }
+        _selectionStart = isAllSelected ? null : (1, 1);
+        _selectionEnd = isAllSelected ? null : (999, 99);
         _additionalSelections = [];
       });
       widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, '');
       return;
     }
 
+    // Col header
     final colHeader = _colHeaderAtOffset(localPosition);
     if (colHeader != null) {
       setState(() {
@@ -161,6 +144,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       return;
     }
 
+    // Row header
     final rowHeader = _rowHeaderAtOffset(localPosition);
     if (rowHeader != null) {
       setState(() {
@@ -177,6 +161,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       return;
     }
 
+    // Data cell
     final cell = _cellAtOffset(localPosition);
     if (cell == null) return;
     if (_isCommandHeld) {
@@ -247,11 +232,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   Border _borderForCell(int row, int col) {
     const green = BorderSide(color: Color(0xFF00B050), width: 1.5);
     const none = BorderSide(color: Color(0xFFD0D0D0), width: 0.5);
-
-    if (!_isSelected(row, col)) {
-      return Border.all(color: const Color(0xFFD0D0D0), width: 0.5);
-    }
-
+    if (!_isSelected(row, col)) return Border.all(color: const Color(0xFFD0D0D0), width: 0.5);
     return Border(
       top:    _isSelected(row - 1, col) ? none : green,
       bottom: _isSelected(row + 1, col) ? none : green,
@@ -294,142 +275,88 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   @override
   Widget build(BuildContext context) {
     final cellMap = _buildCellMap();
-    return Listener(
-      onPointerSignal: (event) {
-        if (event is PointerScrollEvent) {
-          GestureBinding.instance.pointerSignalResolver.register(
-            event,
-            (PointerSignalEvent event) {
-              final scroll = event as PointerScrollEvent;
-              if (_horizontalScrollController.hasClients) {
-                final newX = (_horizontalScrollController.offset + scroll.scrollDelta.dx)
-                    .clamp(0.0, _horizontalScrollController.position.maxScrollExtent);
-                _horizontalScrollController.jumpTo(newX);
-              }
-              if (_verticalScrollController.hasClients) {
-                final newY = (_verticalScrollController.offset + scroll.scrollDelta.dy)
-                    .clamp(0.0, _verticalScrollController.position.maxScrollExtent);
-                _verticalScrollController.jumpTo(newY);
-              }
-            },
-          );
+    return GestureDetector(
+      onScaleStart: (details) => _lastScale = _scale,
+      onScaleUpdate: (details) {
+        if (details.pointerCount >= 2) {
+          final focalPoint = details.localFocalPoint;
+          final oldScale = _scale;
+          final newScale = (_lastScale * details.scale).clamp(0.3, 4.0);
+          final newScrollX = (focalPoint.dx + _scrollOffsetX) * (newScale / oldScale) - focalPoint.dx;
+          final newScrollY = (focalPoint.dy + _scrollOffsetY) * (newScale / oldScale) - focalPoint.dy;
+          setState(() => _scale = newScale);
+          if (_horizontalScrollController.hasClients) {
+            _horizontalScrollController.jumpTo(newScrollX.clamp(0.0, _horizontalScrollController.position.maxScrollExtent));
+          }
+          if (_verticalScrollController.hasClients) {
+            _verticalScrollController.jumpTo(newScrollY.clamp(0.0, _verticalScrollController.position.maxScrollExtent));
+          }
         }
       },
-      child: GestureDetector(
-        onScaleStart: (details) {
-          _lastScale = _scale;
+      child: Listener(
+        onPointerDown: (event) {
+          _isDragging = false;
+          _dragStartPosition = event.localPosition;
+          _handleTap(event.localPosition);
         },
-        onScaleUpdate: (details) {
-          if (details.pointerCount >= 2) {
-            final focalPoint = details.localFocalPoint;
-            final oldScale = _scale;
-            final newScale = (_lastScale * details.scale).clamp(0.3, 4.0);
-            final adjustedX = focalPoint.dx + _scrollOffsetX;
-            final adjustedY = focalPoint.dy + _scrollOffsetY;
-            final newScrollX = adjustedX * (newScale / oldScale) - focalPoint.dx;
-            final newScrollY = adjustedY * (newScale / oldScale) - focalPoint.dy;
-            setState(() => _scale = newScale);
-            if (_horizontalScrollController.hasClients) {
-              _horizontalScrollController.jumpTo(
-                newScrollX.clamp(0.0, _horizontalScrollController.position.maxScrollExtent),
-              );
-            }
-            if (_verticalScrollController.hasClients) {
-              _verticalScrollController.jumpTo(
-                newScrollY.clamp(0.0, _verticalScrollController.position.maxScrollExtent),
-              );
-            }
+        onPointerMove: (event) {
+          if (_dragStartPosition != null) {
+            final delta = (event.localPosition - _dragStartPosition!).distance;
+            if (delta > 5) _isDragging = true;
+          }
+          if (_isDragging && _selectionStart != null) {
+            _startAutoScrollIfNeeded(event.localPosition);
+            final colHeader = _colHeaderAtOffset(event.localPosition);
+            if (colHeader != null) { setState(() => _selectionEnd = (999, colHeader)); return; }
+            final rowHeader = _rowHeaderAtOffset(event.localPosition);
+            if (rowHeader != null) { setState(() => _selectionEnd = (rowHeader, 99)); return; }
+            final cell = _cellAtOffset(event.localPosition);
+            if (cell != null) setState(() => _selectionEnd = cell);
           }
         },
-        child: Listener(
-          onPointerDown: (event) {
-            _isDragging = false;
-            _dragStartPosition = event.localPosition;
-            _handleTap(event.localPosition);
-          },
-          onPointerMove: (event) {
-            if (_dragStartPosition != null) {
-              final delta = (event.localPosition - _dragStartPosition!).distance;
-              if (delta > 5) _isDragging = true;
-            }
-            if (_isDragging && _selectionStart != null) {
-              _startAutoScrollIfNeeded(event.localPosition);
-              final colHeader = _colHeaderAtOffset(event.localPosition);
-              if (colHeader != null) {
-                setState(() => _selectionEnd = (999, colHeader));
-                return;
-              }
-              final rowHeader = _rowHeaderAtOffset(event.localPosition);
-              if (rowHeader != null) {
-                setState(() => _selectionEnd = (rowHeader, 99));
-                return;
-              }
-              final cell = _cellAtOffset(event.localPosition);
-              if (cell != null) setState(() => _selectionEnd = cell);
-            }
-          },
-          onPointerUp: (_) {
-            _isDragging = false;
-            _dragStartPosition = null;
-            _autoScrollTimer?.cancel();
-            _autoScrollTimer = null;
-            final value = (_selectionStart == _selectionEnd && _selectionStart != null)
-                ? _buildCellMap()[_selectionStart] ?? ''
-                : '';
-            widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, value);
-          },
-          child: TableView.builder(
-            diagonalDragBehavior: DiagonalDragBehavior.free,
-            rowCount: 1000,
-            columnCount: 100,
-            pinnedRowCount: 1,
-            pinnedColumnCount: 1,
-            verticalDetails: ScrollableDetails.vertical(
-              controller: _verticalScrollController,
-            ),
-            horizontalDetails: ScrollableDetails.horizontal(
-              controller: _horizontalScrollController,
-            ),
-            rowBuilder: (index) => TableSpan(
-              extent: FixedTableSpanExtent(_scaledCellHeight),
-            ),
-            columnBuilder: (index) => TableSpan(
-              extent: FixedTableSpanExtent(
-                index == 0 ? _scaledRowHeaderWidth : _scaledCellWidth,
-              ),
-            ),
-            cellBuilder: (context, vicinity) {
-              final row = vicinity.row;
-              final col = vicinity.column;
-              if (row == 0 && col == 0) {
-                return TableViewCell(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8E8E8),
-                      border: Border.all(color: const Color(0xFFD0D0D0), width: 0.5),
-                    ),
-                    child: CustomPaint(painter: _CornerTrianglePainter()),
-                  ),
-                );
-              }
-              if (row == 0) {
-                return TableViewCell(
-                  child: _headerCell(
-                    _colLabel(col - 1),
-                    highlighted: _isColHighlighted(col),
-                  ),
-                );
-              }
-              if (col == 0) {
-                return TableViewCell(
-                  child: _headerCell('$row', highlighted: _isRowHighlighted(row)),
-                );
-              }
-              return TableViewCell(
-                child: _dataCell(cellMap[(row, col)] ?? '', row, col),
-              );
-            },
+        onPointerUp: (_) {
+          _isDragging = false;
+          _dragStartPosition = null;
+          _autoScrollTimer?.cancel();
+          _autoScrollTimer = null;
+          final value = (_selectionStart == _selectionEnd && _selectionStart != null)
+              ? _buildCellMap()[_selectionStart] ?? '' : '';
+          widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, value);
+        },
+        child: TableView.builder(
+          diagonalDragBehavior: DiagonalDragBehavior.free,
+          rowCount: 1000,
+          columnCount: 100,
+          pinnedRowCount: 1,
+          pinnedColumnCount: 1,
+          verticalDetails: ScrollableDetails.vertical(controller: _verticalScrollController),
+          horizontalDetails: ScrollableDetails.horizontal(controller: _horizontalScrollController),
+          rowBuilder: (index) => TableSpan(extent: FixedTableSpanExtent(_scaledCellHeight)),
+          columnBuilder: (index) => TableSpan(
+            extent: FixedTableSpanExtent(index == 0 ? _scaledRowHeaderWidth : _scaledCellWidth),
           ),
+          cellBuilder: (context, vicinity) {
+            final row = vicinity.row;
+            final col = vicinity.column;
+            if (row == 0 && col == 0) {
+              return TableViewCell(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8E8E8),
+                    border: Border.all(color: const Color(0xFFD0D0D0), width: 0.5),
+                  ),
+                  child: CustomPaint(painter: _CornerTrianglePainter()),
+                ),
+              );
+            }
+            if (row == 0) {
+              return TableViewCell(child: _headerCell(_colLabel(col - 1), highlighted: _isColHighlighted(col)));
+            }
+            if (col == 0) {
+              return TableViewCell(child: _headerCell('$row', highlighted: _isRowHighlighted(row)));
+            }
+            return TableViewCell(child: _dataCell(cellMap[(row, col)] ?? '', row, col));
+          },
         ),
       ),
     );
@@ -463,11 +390,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         color: selected ? const Color(0xFFE8F5E9) : Colors.white,
         border: border,
       ),
-      child: Text(
-        value,
-        style: TextStyle(fontSize: 12 * _scale),
-        overflow: TextOverflow.ellipsis,
-      ),
+      child: Text(value, style: TextStyle(fontSize: 12 * _scale), overflow: TextOverflow.ellipsis),
     );
   }
 }

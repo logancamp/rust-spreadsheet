@@ -17,7 +17,6 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
   String? _activeSheet;
   List<TableInfo> _tables = [];
   String? _selectedTable;
-  TableData? _tableData;
   String? _currentPath;
   String _selectedCellAddress = '';
   String _selectedCellValue = '';
@@ -46,42 +45,21 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
       BridgeService.switchSheet(activeSheet);
     }
     final tables = BridgeService.getCanvasTables();
-    String? selectedTable = _selectedTable;
-    TableData? tableData = _tableData;
-    if (tables.isNotEmpty && selectedTable == null) {
-      selectedTable = tables.first.name;
-      tableData = BridgeService.getTableData(selectedTable);
-    }
     setState(() {
       _sheets = sheets;
       _activeSheet = activeSheet;
       _tables = tables;
-      _selectedTable = selectedTable;
-      _tableData = tableData;
+      if (tables.isNotEmpty) _selectedTable = tables.first.name;
     });
   }
 
   void _switchSheet(String name) {
     BridgeService.switchSheet(name);
     final tables = BridgeService.getCanvasTables();
-    String? selectedTable;
-    TableData? tableData;
-    if (tables.isNotEmpty) {
-      selectedTable = tables.first.name;
-      tableData = BridgeService.getTableData(selectedTable);
-    }
     setState(() {
       _activeSheet = name;
-      _selectedTable = selectedTable;
-      _tableData = tableData;
       _tables = tables;
-    });
-  }
-
-  void _selectTable(String name) {
-    setState(() {
-      _selectedTable = name;
-      _tableData = BridgeService.getTableData(name);
+      _selectedTable = tables.isNotEmpty ? tables.first.name : null;
     });
   }
 
@@ -108,76 +86,47 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         if (result != null) {
           final path = result.files.single.path!;
           BridgeService.openSai(path);
-          setState(() {
-            _currentPath = path;
-            _activeSheet = null;
-            _selectedTable = null;
-          });
+          setState(() { _currentPath = path; _activeSheet = null; _selectedTable = null; });
           _refreshSheets();
         }
         break;
       case 'new':
         BridgeService.newCanvas('Untitled');
         setState(() {
-          _sheets = [];
-          _activeSheet = null;
-          _tables = [];
-          _selectedTable = null;
-          _tableData = null;
-          _currentPath = null;
+          _sheets = []; _activeSheet = null; _tables = [];
+          _selectedTable = null; _currentPath = null;
+          _selectedCellAddress = ''; _selectedCellValue = '';
         });
         break;
       case 'import_csv':
-        final result = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['csv'],
-        );
+        final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv']);
         if (result != null) {
-          final path = result.files.single.path!;
-          BridgeService.importCsv(path);
+          BridgeService.importCsv(result.files.single.path!);
           setState(() => _activeSheet = null);
         }
         _refreshSheets();
         break;
       case 'import_xlsx':
-        final result2 = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['xlsx'],
-        );
-        if (result2 != null) {
-          final path = result2.files.single.path!;
-          BridgeService.importXlsx(path);
+        final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx']);
+        if (result != null) {
+          BridgeService.importXlsx(result.files.single.path!);
           setState(() => _activeSheet = null);
         }
         _refreshSheets();
         break;
       case 'save':
-        if (_currentPath != null) {
-          BridgeService.saveSai(_currentPath!);
-        } else {
-          await _saveAs();
-        }
+        if (_currentPath != null) BridgeService.saveSai(_currentPath!); else await _saveAs();
         break;
       case 'save_as':
         await _saveAs();
         break;
       case 'export_xlsx':
-        final xlsxPath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Export XLSX',
-          fileName: 'export.xlsx',
-          allowedExtensions: ['xlsx'],
-          type: FileType.custom,
-        );
-        if (xlsxPath != null) BridgeService.exportXlsx(xlsxPath);
+        final path = await FilePicker.platform.saveFile(dialogTitle: 'Export XLSX', fileName: 'export.xlsx', allowedExtensions: ['xlsx'], type: FileType.custom);
+        if (path != null) BridgeService.exportXlsx(path);
         break;
       case 'export_csv':
-        final csvPath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Export CSV',
-          fileName: 'export.csv',
-          allowedExtensions: ['csv'],
-          type: FileType.custom,
-        );
-        if (csvPath != null) BridgeService.exportCsv(csvPath, _selectedTable ?? '');
+        final path = await FilePicker.platform.saveFile(dialogTitle: 'Export CSV', fileName: 'export.csv', allowedExtensions: ['csv'], type: FileType.custom);
+        if (path != null) BridgeService.exportCsv(path, _selectedTable ?? '');
         break;
     }
   }
@@ -189,65 +138,33 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         PlatformMenu(
           label: 'Spreadsheet AI',
           menus: [
-            PlatformMenuItemGroup(members: [
-              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
-            ]),
+            PlatformMenuItemGroup(members: [const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about)]),
             PlatformMenuItemGroup(members: [
               const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hide),
               const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hideOtherApplications),
               const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.showAllApplications),
             ]),
-            PlatformMenuItemGroup(members: [
-              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit),
-            ]),
+            PlatformMenuItemGroup(members: [const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit)]),
           ],
         ),
         PlatformMenu(
           label: 'File',
           menus: [
             PlatformMenuItemGroup(members: [
-              PlatformMenuItem(
-                label: 'New',
-                shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
-                onSelected: () async => await _handleFileMenu('new'),
-              ),
-              PlatformMenuItem(
-                label: 'Open',
-                shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
-                onSelected: () async => await _handleFileMenu('open'),
-              ),
+              PlatformMenuItem(label: 'New', shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true), onSelected: () async => await _handleFileMenu('new')),
+              PlatformMenuItem(label: 'Open', shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true), onSelected: () async => await _handleFileMenu('open')),
             ]),
             PlatformMenuItemGroup(members: [
-              PlatformMenuItem(
-                label: 'Save',
-                shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true),
-                onSelected: () async => await _handleFileMenu('save'),
-              ),
-              PlatformMenuItem(
-                label: 'Save As',
-                shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true),
-                onSelected: () async => await _handleFileMenu('save_as'),
-              ),
+              PlatformMenuItem(label: 'Save', shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true), onSelected: () async => await _handleFileMenu('save')),
+              PlatformMenuItem(label: 'Save As', shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true), onSelected: () async => await _handleFileMenu('save_as')),
             ]),
             PlatformMenuItemGroup(members: [
-              PlatformMenuItem(
-                label: 'Import CSV',
-                onSelected: () async => await _handleFileMenu('import_csv'),
-              ),
-              PlatformMenuItem(
-                label: 'Import XLSX',
-                onSelected: () async => await _handleFileMenu('import_xlsx'),
-              ),
+              PlatformMenuItem(label: 'Import CSV', onSelected: () async => await _handleFileMenu('import_csv')),
+              PlatformMenuItem(label: 'Import XLSX', onSelected: () async => await _handleFileMenu('import_xlsx')),
             ]),
             PlatformMenuItemGroup(members: [
-              PlatformMenuItem(
-                label: 'Export XLSX',
-                onSelected: () async => await _handleFileMenu('export_xlsx'),
-              ),
-              PlatformMenuItem(
-                label: 'Export CSV',
-                onSelected: () async => await _handleFileMenu('export_csv'),
-              ),
+              PlatformMenuItem(label: 'Export XLSX', onSelected: () async => await _handleFileMenu('export_xlsx')),
+              PlatformMenuItem(label: 'Export CSV', onSelected: () async => await _handleFileMenu('export_csv')),
             ]),
           ],
         ),
@@ -296,22 +213,13 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                   Container(
                     width: 80,
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border(right: BorderSide(color: Colors.grey[300]!, width: 1)),
-                    ),
-                    child: Text(
-                      _selectedCellAddress,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                    ),
+                    decoration: BoxDecoration(border: Border(right: BorderSide(color: Colors.grey[300]!, width: 1))),
+                    child: Text(_selectedCellAddress, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                   ),
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        _selectedCellValue,
-                        style: const TextStyle(fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: Text(_selectedCellValue, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
                     ),
                   ),
                 ],
@@ -338,12 +246,11 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                     return;
                   }
                   final startAddr = '${_toColLabel(start.$2)}${start.$1}';
-                  if (end == null || start == end) {
-                    setState(() { _selectedCellAddress = startAddr; _selectedCellValue = value; });
-                  } else {
-                    final endAddr = '${_toColLabel(end.$2)}${end.$1}';
-                    setState(() { _selectedCellAddress = '$startAddr:$endAddr'; _selectedCellValue = value; });
-                  }
+                  final endAddr = (end == null || start == end) ? null : '${_toColLabel(end.$2)}${end.$1}';
+                  setState(() {
+                    _selectedCellAddress = endAddr != null ? '$startAddr:$endAddr' : startAddr;
+                    _selectedCellValue = value;
+                  });
                 },
               ),
             ),
@@ -357,12 +264,10 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          color: sheet == _activeSheet ? Colors.green : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
+                      border: Border(top: BorderSide(
+                        color: sheet == _activeSheet ? Colors.green : Colors.transparent,
+                        width: 2,
+                      )),
                     ),
                     alignment: Alignment.center,
                     child: Text(sheet),
