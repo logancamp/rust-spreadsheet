@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:two_dimensional_scrollables/two_dimensional_scrollables.dart';
@@ -6,11 +7,15 @@ import 'package:spreadsheet_ai/src/rust/api/simple.dart';
 class SpreadsheetGrid extends StatefulWidget {
   final List<TableInfo> tables;
   final List<TableData> tableData;
+  final void Function((int, int)? cell, String value)? onCellSelected;
+  final void Function((int, int)? start, (int, int)? end, String value)? onSelectionChanged;
 
   const SpreadsheetGrid({
     super.key,
     required this.tables,
     required this.tableData,
+    this.onCellSelected,
+    this.onSelectionChanged,
   });
 
   @override
@@ -26,6 +31,10 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   double _scrollOffsetY = 0;
   bool _isDragging = false;
   Offset? _dragStartPosition;
+  Timer? _autoScrollTimer;
+
+  final ScrollController _verticalScrollController = ScrollController();
+  final ScrollController _horizontalScrollController = ScrollController();
 
   static const double _rowHeaderWidth = 50;
   static const double _colHeaderHeight = 25;
@@ -35,6 +44,25 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   bool get _isCommandHeld =>
       HardwareKeyboard.instance.isMetaPressed ||
       HardwareKeyboard.instance.isControlPressed;
+
+  @override
+  void initState() {
+    super.initState();
+    _verticalScrollController.addListener(() {
+      _scrollOffsetY = _verticalScrollController.offset;
+    });
+    _horizontalScrollController.addListener(() {
+      _scrollOffsetX = _horizontalScrollController.offset;
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoScrollTimer?.cancel();
+    _verticalScrollController.dispose();
+    _horizontalScrollController.dispose();
+    super.dispose();
+  }
 
   (int, int)? _cellAtOffset(Offset offset) {
     final adjustedX = offset.dx + _scrollOffsetX;
@@ -62,7 +90,56 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     return ((adjustedY - _colHeaderHeight) / _cellHeight).floor() + 1;
   }
 
+  void _startAutoScrollIfNeeded(Offset position) {
+    _autoScrollTimer?.cancel();
+    const edgeSize = 40.0;
+    const scrollSpeed = 10.0;
+
+    double dx = 0;
+    double dy = 0;
+
+    if (position.dx < _rowHeaderWidth + edgeSize) dx = -scrollSpeed;
+    if (context.size != null && position.dx > context.size!.width - edgeSize) dx = scrollSpeed;
+    if (position.dy < _colHeaderHeight + edgeSize) dy = -scrollSpeed;
+    if (context.size != null && position.dy > context.size!.height - edgeSize) dy = scrollSpeed;
+
+    if (dx == 0 && dy == 0) return;
+
+    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (dx != 0 && _horizontalScrollController.hasClients) {
+        _horizontalScrollController.jumpTo(
+          (_horizontalScrollController.offset + dx)
+              .clamp(0, _horizontalScrollController.position.maxScrollExtent),
+        );
+      }
+      if (dy != 0 && _verticalScrollController.hasClients) {
+        _verticalScrollController.jumpTo(
+          (_verticalScrollController.offset + dy)
+              .clamp(0, _verticalScrollController.position.maxScrollExtent),
+        );
+      }
+    });
+  }
+
   void _handleTap(Offset localPosition) {
+    // Corner — select all
+    if (localPosition.dx < _rowHeaderWidth && localPosition.dy < _colHeaderHeight) {
+      final isAllSelected = _selectionStart == (1, 1) && _selectionEnd == (999, 99);
+      setState(() {
+        if (isAllSelected) {
+          _selectionStart = null;
+          _selectionEnd = null;
+        } else {
+          _selectionStart = (1, 1);
+          _selectionEnd = (999, 99);
+        }
+        _additionalSelections = [];
+      });
+      widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, '');
+      return;
+    }
+
+    // Col header
     final colHeader = _colHeaderAtOffset(localPosition);
     if (colHeader != null) {
       setState(() {
@@ -74,9 +151,12 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         _selectionStart = (1, colHeader);
         _selectionEnd = (999, colHeader);
       });
+      widget.onCellSelected?.call(null, '');
+      widget.onSelectionChanged?.call((1, colHeader), (999, colHeader), '');
       return;
     }
 
+    // Row header
     final rowHeader = _rowHeaderAtOffset(localPosition);
     if (rowHeader != null) {
       setState(() {
@@ -88,9 +168,12 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         _selectionStart = (rowHeader, 1);
         _selectionEnd = (rowHeader, 99);
       });
+      widget.onCellSelected?.call(null, '');
+      widget.onSelectionChanged?.call((rowHeader, 1), (rowHeader, 99), '');
       return;
     }
 
+    // Data cell
     final cell = _cellAtOffset(localPosition);
     if (cell == null) return;
     if (_isCommandHeld) {
@@ -108,6 +191,9 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         _additionalSelections = [];
       });
     }
+    final value = _buildCellMap()[cell] ?? '';
+    widget.onCellSelected?.call(cell, value);
+    widget.onSelectionChanged?.call(cell, cell, value);
   }
 
   bool _inRange(int row, int col, (int, int)? start, (int, int)? end) {
@@ -217,34 +303,42 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
           if (delta > 5) _isDragging = true;
         }
         if (_isDragging && _selectionStart != null) {
-          // Check if dragging across col headers
+          _startAutoScrollIfNeeded(event.localPosition);
           final colHeader = _colHeaderAtOffset(event.localPosition);
           if (colHeader != null) {
             setState(() => _selectionEnd = (999, colHeader));
             return;
           }
-          // Check if dragging across row headers
           final rowHeader = _rowHeaderAtOffset(event.localPosition);
           if (rowHeader != null) {
             setState(() => _selectionEnd = (rowHeader, 99));
             return;
           }
-          // Normal cell drag
           final cell = _cellAtOffset(event.localPosition);
-          if (cell != null) {
-            setState(() => _selectionEnd = cell);
-          }
+          if (cell != null) setState(() => _selectionEnd = cell);
         }
       },
       onPointerUp: (_) {
         _isDragging = false;
         _dragStartPosition = null;
+        _autoScrollTimer?.cancel();
+        _autoScrollTimer = null;
+        final value = (_selectionStart == _selectionEnd && _selectionStart != null)
+            ? _buildCellMap()[_selectionStart] ?? ''
+            : '';
+        widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, value);
       },
       child: TableView.builder(
         rowCount: 1000,
         columnCount: 100,
         pinnedRowCount: 1,
         pinnedColumnCount: 1,
+        verticalDetails: ScrollableDetails.vertical(
+          controller: _verticalScrollController,
+        ),
+        horizontalDetails: ScrollableDetails.horizontal(
+          controller: _horizontalScrollController,
+        ),
         rowBuilder: (index) => TableSpan(
           extent: FixedTableSpanExtent(_cellHeight),
         ),
@@ -254,9 +348,18 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         cellBuilder: (context, vicinity) {
           final row = vicinity.row;
           final col = vicinity.column;
-
           if (row == 0 && col == 0) {
-            return TableViewCell(child: _headerCell(''));
+            return TableViewCell(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8E8E8),
+                  border: Border.all(color: const Color(0xFFD0D0D0), width: 0.5),
+                ),
+                child: CustomPaint(
+                  painter: _CornerTrianglePainter(),
+                ),
+              ),
+            );
           }
           if (row == 0) {
             return TableViewCell(
@@ -317,4 +420,22 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       ),
     );
   }
+}
+
+class _CornerTrianglePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF888888)
+      ..style = PaintingStyle.fill;
+    final path = Path()
+      ..moveTo(size.width, size.height)
+      ..lineTo(size.width - 8, size.height)
+      ..lineTo(size.width, size.height - 8)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_CornerTrianglePainter oldDelegate) => false;
 }

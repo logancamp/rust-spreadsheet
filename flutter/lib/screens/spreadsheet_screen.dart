@@ -13,17 +13,29 @@ class SpreadsheetScreen extends StatefulWidget {
 }
 
 class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
-  List<String> _sheets = [];         // canvas/sheet names
-  String? _activeSheet;              // active sheet tab
-  List<TableInfo> _tables = [];      // islands in active sheet
+  List<String> _sheets = [];
+  String? _activeSheet;
+  List<TableInfo> _tables = [];
   String? _selectedTable;
   TableData? _tableData;
   String? _currentPath;
+  String _selectedCellAddress = '';
+  String _selectedCellValue = '';
 
   @override
   void initState() {
     super.initState();
     BridgeService.newCanvas('Untitled');
+  }
+
+  String _toColLabel(int col) {
+    String label = '';
+    int c = col - 1;
+    do {
+      label = String.fromCharCode(65 + (c % 26)) + label;
+      c = (c ~/ 26) - 1;
+    } while (c >= 0);
+    return label;
   }
 
   void _refreshSheets() {
@@ -86,7 +98,6 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
     }
   }
 
-  /// Menu Bar Function
   Future<void> _handleFileMenu(String value) async {
     switch (value) {
       case 'open':
@@ -144,7 +155,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         if (_currentPath != null) {
           BridgeService.saveSai(_currentPath!);
         } else {
-          await _saveAs();  // calls the helper
+          await _saveAs();
         }
         break;
       case 'save_as':
@@ -157,9 +168,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
           allowedExtensions: ['xlsx'],
           type: FileType.custom,
         );
-        if (xlsxPath != null) {
-          BridgeService.exportXlsx(xlsxPath);
-        }
+        if (xlsxPath != null) BridgeService.exportXlsx(xlsxPath);
         break;
       case 'export_csv':
         final csvPath = await FilePicker.platform.saveFile(
@@ -168,9 +177,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
           allowedExtensions: ['csv'],
           type: FileType.custom,
         );
-        if (csvPath != null) {
-          BridgeService.exportCsv(csvPath, _selectedTable ?? '');
-        }
+        if (csvPath != null) BridgeService.exportCsv(csvPath, _selectedTable ?? '');
         break;
     }
   }
@@ -182,97 +189,79 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         PlatformMenu(
           label: 'Spreadsheet AI',
           menus: [
-            PlatformMenuItemGroup(
-              members: [
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
-              ],
-            ),
-            PlatformMenuItemGroup(
-              members: [
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hide),
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hideOtherApplications),
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.showAllApplications),
-              ],
-            ),
-            PlatformMenuItemGroup(
-              members: [
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit),
-              ],
-            ),
+            PlatformMenuItemGroup(members: [
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
+            ]),
+            PlatformMenuItemGroup(members: [
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hide),
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hideOtherApplications),
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.showAllApplications),
+            ]),
+            PlatformMenuItemGroup(members: [
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit),
+            ]),
           ],
         ),
         PlatformMenu(
           label: 'File',
           menus: [
-            PlatformMenuItemGroup(
-              members: [
-                PlatformMenuItem(
-                  label: 'New',
-                  shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
-                  onSelected: () async => await _handleFileMenu('new'),
-                ),
-                PlatformMenuItem(
-                  label: 'Open',
-                  shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
-                  onSelected: () async => await _handleFileMenu('open'),
-                ),
-              ],
-            ),
-            PlatformMenuItemGroup(
-              members: [
-                PlatformMenuItem(
-                  label: 'Save',
-                  shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true),
-                  onSelected: () async => await _handleFileMenu('save'),
-                ),
-                PlatformMenuItem(
-                  label: 'Save As',
-                  shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true),
-                  onSelected: () async => await _handleFileMenu('save_as'),
-                ),
-              ],
-            ),
-            PlatformMenuItemGroup(
-              members: [
-                PlatformMenuItem(
-                  label: 'Import CSV',
-                  onSelected: () async => await _handleFileMenu('import_csv'),
-                ),
-                PlatformMenuItem(
-                  label: 'Import XLSX',
-                  onSelected: () async => await _handleFileMenu('import_xlsx'),
-                ),
-              ],
-            ),
-            PlatformMenuItemGroup(
-              members: [
-                PlatformMenuItem(
-                  label: 'Export XLSX',
-                  onSelected: () async => await _handleFileMenu('export_xlsx'),
-                ),
-                PlatformMenuItem(
-                  label: 'Export CSV',
-                  onSelected: () async => await _handleFileMenu('export_csv'),
-                ),
-              ],
-            ),
+            PlatformMenuItemGroup(members: [
+              PlatformMenuItem(
+                label: 'New',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
+                onSelected: () async => await _handleFileMenu('new'),
+              ),
+              PlatformMenuItem(
+                label: 'Open',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
+                onSelected: () async => await _handleFileMenu('open'),
+              ),
+            ]),
+            PlatformMenuItemGroup(members: [
+              PlatformMenuItem(
+                label: 'Save',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true),
+                onSelected: () async => await _handleFileMenu('save'),
+              ),
+              PlatformMenuItem(
+                label: 'Save As',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true),
+                onSelected: () async => await _handleFileMenu('save_as'),
+              ),
+            ]),
+            PlatformMenuItemGroup(members: [
+              PlatformMenuItem(
+                label: 'Import CSV',
+                onSelected: () async => await _handleFileMenu('import_csv'),
+              ),
+              PlatformMenuItem(
+                label: 'Import XLSX',
+                onSelected: () async => await _handleFileMenu('import_xlsx'),
+              ),
+            ]),
+            PlatformMenuItemGroup(members: [
+              PlatformMenuItem(
+                label: 'Export XLSX',
+                onSelected: () async => await _handleFileMenu('export_xlsx'),
+              ),
+              PlatformMenuItem(
+                label: 'Export CSV',
+                onSelected: () async => await _handleFileMenu('export_csv'),
+              ),
+            ]),
           ],
         ),
         PlatformMenu(
           label: 'Window',
           menus: [
-            PlatformMenuItemGroup(
-              members: [
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.minimizeWindow),
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.zoomWindow),
-              ],
-            ),
-            PlatformMenuItemGroup(
-              members: [
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.toggleFullScreen),
-                const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.arrangeWindowsInFront),
-              ],
-            ),
+            PlatformMenuItemGroup(members: [
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.minimizeWindow),
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.zoomWindow),
+            ]),
+            PlatformMenuItemGroup(members: [
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.toggleFullScreen),
+              const PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.arrangeWindowsInFront),
+            ]),
           ],
         ),
       ],
@@ -295,23 +284,67 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                 ],
               ),
             ),
-            /// Middle — sidebar + content
-            Expanded(
+            /// Name box + formula bar
+            Container(
+              height: 28,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
+              ),
               child: Row(
                 children: [
+                  Container(
+                    width: 80,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border(right: BorderSide(color: Colors.grey[300]!, width: 1)),
+                    ),
+                    child: Text(
+                      _selectedCellAddress,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                  ),
                   Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: SpreadsheetGrid(
-                            tables: _tables,
-                            tableData: _tables.map((t) => BridgeService.getTableData(t.name)).toList(),
-                          ),
-                        ),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        _selectedCellValue,
+                        style: const TextStyle(fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ],
+              ),
+            ),
+            /// Grid
+            Expanded(
+              child: SpreadsheetGrid(
+                tables: _tables,
+                tableData: _tables.map((t) => BridgeService.getTableData(t.name)).toList(),
+                onCellSelected: (cell, value) {
+                  if (cell == null) {
+                    setState(() { _selectedCellAddress = ''; _selectedCellValue = ''; });
+                    return;
+                  }
+                  setState(() {
+                    _selectedCellAddress = '${_toColLabel(cell.$2)}${cell.$1}';
+                    _selectedCellValue = value;
+                  });
+                },
+                onSelectionChanged: (start, end, value) {
+                  if (start == null) {
+                    setState(() { _selectedCellAddress = ''; _selectedCellValue = ''; });
+                    return;
+                  }
+                  final startAddr = '${_toColLabel(start.$2)}${start.$1}';
+                  if (end == null || start == end) {
+                    setState(() { _selectedCellAddress = startAddr; _selectedCellValue = value; });
+                  } else {
+                    final endAddr = '${_toColLabel(end.$2)}${end.$1}';
+                    setState(() { _selectedCellAddress = '$startAddr:$endAddr'; _selectedCellValue = value; });
+                  }
+                },
               ),
             ),
             /// Sheet tabs
@@ -326,9 +359,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                     decoration: BoxDecoration(
                       border: Border(
                         top: BorderSide(
-                          color: sheet == _activeSheet
-                              ? Colors.green
-                              : Colors.transparent,
+                          color: sheet == _activeSheet ? Colors.green : Colors.transparent,
                           width: 2,
                         ),
                       ),
