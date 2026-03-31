@@ -161,6 +161,10 @@ pub fn set_table_position(table_name: &str, x: f32, y: f32) -> Result<(), String
     }).map_err(|e| e.to_string())
 }
 
+pub struct EditResult {
+    pub affected_tables: Vec<String>,
+}
+
 #[frb(sync)]
 pub fn edit_cell(
     sheet_name: &str,
@@ -168,12 +172,20 @@ pub fn edit_cell(
     col_name: &str,
     row: u32,
     value: &str,
-) -> Result<(), String> {
+) -> Result<EditResult, String> {
     spreadsheet_ai::canvas::state::set_cell(
         sheet_name,
         table_name,
         col_name,
         row as usize,
         value.to_string(),
-    ).map_err(|e| e.to_string())
+    ).map_err(|e| e.to_string())?;
+
+    let tables = read_canvas(|canvas| {
+        canvas.objects().iter().filter_map(|o| match o {
+            SheetObject::Table(t) => Some(t.name().to_string()),
+        }).collect::<Vec<String>>()
+    }).map_err(|e| e.to_string())?;
+
+    Ok(EditResult { affected_tables: tables })
 }

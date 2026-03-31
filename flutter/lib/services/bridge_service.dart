@@ -44,9 +44,19 @@ class BridgeService {
 
   static List<String> getSheetsList() {
     return bridge.getSheetsList();
-}
+  }
 
   static void switchSheet(String name) {
       bridge.switchSheet(name: name);
+  }
+
+  static bridge.EditResult editCell(String sheetName, String tableName, String colName, int row, String value) {
+    return bridge.editCell(
+        sheetName: sheetName,
+        tableName: tableName,
+        colName: colName,
+        row: row,
+        value: value,
+    );
   }
 }

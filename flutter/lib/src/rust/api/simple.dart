@@ -50,7 +50,7 @@ void setTablePosition(
     RustLib.instance.api
         .crateApiSimpleSetTablePosition(tableName: tableName, x: x, y: y);
 
-void editCell(
+EditResult editCell(
         {required String sheetName,
         required String tableName,
         required String colName,
@@ -62,6 +62,24 @@ void editCell(
         colName: colName,
         row: row,
         value: value);
+
+class EditResult {
+  final List<String> affectedTables;
+
+  const EditResult({
+    required this.affectedTables,
+  });
+
+  @override
+  int get hashCode => affectedTables.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EditResult &&
+          runtimeType == other.runtimeType &&
+          affectedTables == other.affectedTables;
+}
 
 class TableData {
   final String name;

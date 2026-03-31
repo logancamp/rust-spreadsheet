@@ -28,6 +28,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 
                   @protected String dco_decode_String(dynamic raw);
 
+@protected EditResult dco_decode_edit_result(dynamic raw);
+
 @protected double dco_decode_f_32(dynamic raw);
 
 @protected List<String> dco_decode_list_String(dynamic raw);
@@ -51,6 +53,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 @protected void dco_decode_unit(dynamic raw);
 
 @protected String sse_decode_String(SseDeserializer deserializer);
+
+@protected EditResult sse_decode_edit_result(SseDeserializer deserializer);
 
 @protected double sse_decode_f_32(SseDeserializer deserializer);
 
@@ -79,6 +83,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 @protected bool sse_decode_bool(SseDeserializer deserializer);
 
 @protected void sse_encode_String(String self, SseSerializer serializer);
+
+@protected void sse_encode_edit_result(EditResult self, SseSerializer serializer);
 
 @protected void sse_encode_f_32(double self, SseSerializer serializer);
 
