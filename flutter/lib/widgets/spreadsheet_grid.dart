@@ -30,6 +30,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   (int, int)? _selectionStart;
   (int, int)? _selectionEnd;
   List<((int, int), (int, int))> _additionalSelections = [];
+  Map<(int, int), Set<String>> _tableBorderMap = {};
 
   double _scrollOffsetX = 0;
   double _scrollOffsetY = 0;
@@ -38,6 +39,9 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   Timer? _autoScrollTimer;
   double _scale = 1.0;
   double _lastScale = 1.0;
+
+  Map<(int, int), String> _cellMap = {};
+  Map<(int, int), bool> _numericMap = {};
 
   final ScrollController _verticalScrollController = ScrollController();
   final ScrollController _horizontalScrollController = ScrollController();
@@ -60,6 +64,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   void initState() {
     super.initState();
     if (widget.externalScale != null) _scale = widget.externalScale!;
+    _rebuildCellMap();
     _verticalScrollController.addListener(() => _scrollOffsetY = _verticalScrollController.offset);
     _horizontalScrollController.addListener(() => _scrollOffsetX = _horizontalScrollController.offset);
   }
@@ -70,6 +75,40 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     if (widget.externalScale != null && widget.externalScale != oldWidget.externalScale) {
       setState(() => _scale = widget.externalScale!);
     }
+    if (widget.tables != oldWidget.tables || widget.tableData != oldWidget.tableData) {
+      _rebuildCellMap();
+    }
+  }
+
+  void _rebuildCellMap() {
+    final newCellMap = <(int, int), String>{};
+    final newNumericMap = <(int, int), bool>{};
+    for (final info in widget.tables) {
+      final data = widget.tableData.firstWhere(
+        (d) => d.name == info.name,
+        orElse: () => const TableData(name: '', columns: [], rows: []),
+      );
+      final startCol = info.position.$1.toInt() + 1;
+      final startRow = info.position.$2.toInt() + 1;
+      // Column headers — never numeric
+      for (int c = 0; c < data.columns.length; c++) {
+        final key = (startRow, startCol + c);
+        newCellMap[key] = data.columns[c];
+        newNumericMap[key] = false;
+      }
+      // Data rows
+      for (int r = 0; r < data.rows.length; r++) {
+        for (int c = 0; c < data.rows[r].length; c++) {
+          final key = (startRow + r + 1, startCol + c);
+          final value = data.rows[r][c];
+          newCellMap[key] = value;
+          newNumericMap[key] = double.tryParse(value) != null;
+        }
+      }
+    }
+    _cellMap = newCellMap;
+    _numericMap = newNumericMap;
+    _tableBorderMap = _buildTableBorderMap();
   }
 
   @override
@@ -185,7 +224,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         _additionalSelections = [];
       });
     }
-    final value = _buildCellMap()[cell] ?? '';
+    final value = _cellMap[cell] ?? '';
     widget.onCellSelected?.call(cell, value);
     widget.onSelectionChanged?.call(cell, cell, value);
   }
@@ -238,34 +277,28 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   Border _borderForCell(int row, int col) {
     const green = BorderSide(color: Color(0xFF00B050), width: 1.5);
     const none = BorderSide(color: Color(0xFFD0D0D0), width: 0.5);
-    if (!_isSelected(row, col)) return Border.all(color: const Color(0xFFD0D0D0), width: 0.5);
-    return Border(
-      top:    _isSelected(row - 1, col) ? none : green,
-      bottom: _isSelected(row + 1, col) ? none : green,
-      left:   _isSelected(row, col - 1) ? none : green,
-      right:  _isSelected(row, col + 1) ? none : green,
-    );
-  }
+    const tableBorder = BorderSide(color: Color(0xFF888888), width: 1.0);
 
-  Map<(int, int), String> _buildCellMap() {
-    final map = <(int, int), String>{};
-    for (final info in widget.tables) {
-      final data = widget.tableData.firstWhere(
-        (d) => d.name == info.name,
-        orElse: () => const TableData(name: '', columns: [], rows: []),
+    if (_isSelected(row, col)) {
+      return Border(
+        top:    _isSelected(row - 1, col) ? none : green,
+        bottom: _isSelected(row + 1, col) ? none : green,
+        left:   _isSelected(row, col - 1) ? none : green,
+        right:  _isSelected(row, col + 1) ? none : green,
       );
-      final startCol = info.position.$1.toInt() + 1;
-      final startRow = info.position.$2.toInt() + 1;
-      for (int c = 0; c < data.columns.length; c++) {
-        map[(startRow, startCol + c)] = data.columns[c];
-      }
-      for (int r = 0; r < data.rows.length; r++) {
-        for (int c = 0; c < data.rows[r].length; c++) {
-          map[(startRow + r + 1, startCol + c)] = data.rows[r][c];
-        }
-      }
     }
-    return map;
+
+    final tableSides = _tableBorderMap[(row, col)];
+    if (tableSides != null) {
+      return Border(
+        top:    tableSides.contains('top') ? tableBorder : none,
+        bottom: tableSides.contains('bottom') ? tableBorder : none,
+        left:   tableSides.contains('left') ? tableBorder : none,
+        right:  tableSides.contains('right') ? tableBorder : none,
+      );
+    }
+
+    return Border.all(color: const Color(0xFFD0D0D0), width: 0.5);
   }
 
   String _colLabel(int col) {
@@ -280,7 +313,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
 
   @override
   Widget build(BuildContext context) {
-    final cellMap = _buildCellMap();
     return GestureDetector(
       onScaleStart: (details) => _lastScale = _scale,
       onScaleUpdate: (details) {
@@ -327,7 +359,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
           _autoScrollTimer?.cancel();
           _autoScrollTimer = null;
           final value = (_selectionStart == _selectionEnd && _selectionStart != null)
-              ? _buildCellMap()[_selectionStart] ?? '' : '';
+              ? _cellMap[_selectionStart] ?? '' : '';
           widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, value);
         },
         child: TableView.builder(
@@ -362,7 +394,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
             if (col == 0) {
               return TableViewCell(child: _headerCell('$row', highlighted: _isRowHighlighted(row)));
             }
-            return TableViewCell(child: _dataCell(cellMap[(row, col)] ?? '', row, col));
+            return TableViewCell(child: _dataCell(_cellMap[(row, col)] ?? '', row, col));
           },
         ),
       ),
@@ -390,15 +422,42 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
   Widget _dataCell(String value, int row, int col) {
     final selected = _isSelected(row, col);
     final border = _borderForCell(row, col);
+    final isNumeric = _numericMap[(row, col)] == true;
     return Container(
-      alignment: Alignment.centerLeft,
+      alignment: isNumeric ? Alignment.centerRight : Alignment.centerLeft,
       padding: EdgeInsets.symmetric(horizontal: 4 * _scale),
       decoration: BoxDecoration(
         color: selected ? const Color(0xFFE8F5E9) : Colors.white,
         border: border,
       ),
-      child: Text(value, style: TextStyle(fontSize: 12 * _scale), overflow: TextOverflow.ellipsis),
+      child: Text(
+        value,
+        style: TextStyle(fontSize: 12 * _scale),
+        overflow: TextOverflow.ellipsis,
+      ),
     );
+  }
+
+  Map<(int, int), Set<String>> _buildTableBorderMap() {
+    final map = <(int, int), Set<String>>{};
+    for (final info in widget.tables) {
+      final startCol = info.position.$1.toInt() + 1;
+      final startRow = info.position.$2.toInt() + 1;
+      final endCol = startCol + info.cols - 1;
+      final endRow = startRow + info.rows;  // +1 for header row
+
+      for (int r = startRow; r <= endRow; r++) {
+        for (int c = startCol; c <= endCol; c++) {
+          final key = (r, c);
+          map[key] ??= {};
+          if (r == startRow) map[key]!.add('top');
+          if (r == endRow) map[key]!.add('bottom');
+          if (c == startCol) map[key]!.add('left');
+          if (c == endCol) map[key]!.add('right');
+        }
+      }
+    }
+    return map;
   }
 }
 
