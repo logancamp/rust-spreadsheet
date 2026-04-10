@@ -131,6 +131,8 @@ pub fn get_table_data(table_name: &str) -> Result<TableData, String> {
         canvas.get_table(table_name).cloned()
     }).map_err(|e| e.to_string())?
     .ok_or_else(|| format!("Table '{}' not found", table_name))?;
+    
+    println!("get_table_data: {} | rows={} cols={}", table.name(), table.row_count(), table.col_count());
 
     Ok(TableData {
         name: table.name().to_string(),
@@ -144,6 +146,7 @@ pub fn get_table_data(table_name: &str) -> Result<TableData, String> {
                     match col.get(row_idx).unwrap() {
                         polars::prelude::AnyValue::String(s) => s.to_string(),
                         polars::prelude::AnyValue::StringOwned(s) => s.to_string(),
+                        polars::prelude::AnyValue::Null => String::new(),  // ← this must be here
                         other => other.to_string(),
                     }
                 }).collect()

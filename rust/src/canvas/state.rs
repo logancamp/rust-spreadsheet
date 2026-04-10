@@ -133,6 +133,8 @@ pub fn canvas_load_xlsx(path: &str) -> Result<(), AppError> {
             let sheet_name = sheet_table.sheet_name.clone();
             let table = sheet_table.table.with_source_path(path);
 
+            println!("imported table: {}, rows: {}", table.name(), table.data().height());
+
             let canvas = guard.sheets
                 .entry(sheet_name.clone())
                 .or_insert_with(|| Canvas::new(sheet_name.clone()));

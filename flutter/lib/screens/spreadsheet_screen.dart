@@ -1,4 +1,3 @@
-// spreadsheet_screen.dart
 import 'package:flutter/material.dart';
 import '../services/bridge_service.dart';
 import 'package:spreadsheet_ai/src/rust/api/simple.dart';
@@ -27,6 +26,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
   bool _editingIsNew = false;
 
   (int, int)? _editingCell;
+  (int, int)? _postCommitCell;
   String _originalCellValue = '';
   String? _editingTableName;
   String? _editingColName;
@@ -111,12 +111,13 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
     int? rowIndex,
     bool isNew = false,
     (int, int)? gridCell,
+    (int, int)? selectAfter,
   }) async {
+    final cell = gridCell ?? _editingCell;
     final tn = tableName ?? _editingTableName;
     final cn = colName ?? _editingColName;
     final ri = rowIndex ?? _editingRowIndex;
     final ni = isNew || _editingIsNew;
-    final cell = gridCell ?? _editingCell;
 
     setState(() {
       _selectedCellValue = value;
@@ -125,22 +126,25 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
       _editingIsNew = false;
       _selectedCellAddress = '';
       _formulaController.text = '';
-      _commitKey++;
+      _postCommitCell = selectAfter;
     });
 
     if (_activeSheet == null) return;
 
-    if (tn != null && cn != null && ri != null && ri >= 0 && !ni) {
-      // Existing table data row
-      BridgeService.editCell(_activeSheet!, tn, cn, ri, value);
-    } else if (cell != null) {
-      // Header edit, new row, or non-table cell — all go through canvas
-      final canvasCol = cell.$2 - 1;
-      final canvasRow = cell.$1 - 1;
-      BridgeService.setCanvasCell(_activeSheet!, canvasCol, canvasRow, value);
+    try {
+      if (tn != null && cn != null && ri != null && ri >= 0 && !ni) {
+        BridgeService.editCell(_activeSheet!, tn, cn, ri, value);
+      } else if (cell != null) {
+        final canvasCol = cell.$2 - 1;
+        final canvasRow = cell.$1 - 1;
+        BridgeService.setCanvasCell(_activeSheet!, canvasCol, canvasRow, value);
+      }
+    } catch (e) {
+      print('commitEdit error: $e');
     }
 
     _refreshTableData();
+    setState(() => _commitKey++);
   }
 
   void _revertEdit() {
@@ -322,7 +326,6 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                         ),
                         onChanged: (value) {
                           _selectedCellValue = value;
-                          // Trigger rebuild only to sync cell preview
                           setState(() {});
                         },
                         onSubmitted: (value) => _commitEdit(value, gridCell: _editingCell),
@@ -336,16 +339,8 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
             Expanded(
               child: SpreadsheetGrid(
                 key: ValueKey(_commitKey),
+                initialSelection: _postCommitCell,
                 formulaBarFocused: _formulaBarFocused,
-                onCellDeleteCommit: (cell, tableName, colName, rowIndex, isNew) {
-                  _commitEdit('',
-                    tableName: tableName,
-                    colName: colName,
-                    rowIndex: rowIndex,
-                    isNew: isNew,
-                    gridCell: cell,
-                  );
-                },
                 tables: _tables,
                 tableData: _tableDataCache,
                 externalScale: _scale,
@@ -379,8 +374,24 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                     _editingIsNew = isNew;
                   });
                 },
-                onCellCommit: (cell, value, tableName, colName, rowIndex, isNew) {
-                  _commitEdit(value, tableName: tableName, colName: colName, rowIndex: rowIndex, isNew: isNew, gridCell: cell);
+                onCellCommit: (cell, value, tableName, colName, rowIndex, isNew, {selectAfter}) {
+                  _commitEdit(value,
+                    tableName: tableName,
+                    colName: colName,
+                    rowIndex: rowIndex,
+                    isNew: isNew,
+                    gridCell: cell,
+                    selectAfter: selectAfter,
+                  );
+                },
+                onCellDeleteCommit: (cell, tableName, colName, rowIndex, isNew) {
+                  _commitEdit('',
+                    tableName: tableName,
+                    colName: colName,
+                    rowIndex: rowIndex,
+                    isNew: isNew,
+                    gridCell: cell,
+                  );
                 },
                 onSelectionChanged: (start, end, value) {
                   if (start == null) {

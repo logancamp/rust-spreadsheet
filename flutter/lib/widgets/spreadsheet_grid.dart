@@ -7,6 +7,7 @@ import 'package:spreadsheet_ai/src/rust/api/simple.dart';
 class SpreadsheetGrid extends StatefulWidget {
   final List<TableInfo> tables;
   final List<TableData> tableData;
+  final (int, int)? initialSelection;
   final void Function(
     (int, int)? cell,
     String value,
@@ -21,8 +22,9 @@ class SpreadsheetGrid extends StatefulWidget {
     String? tableName,
     String? colName,
     int? rowIndex,
-    bool isNew,
-  )? onCellCommit;
+    bool isNew, {
+    (int, int)? selectAfter,
+  })? onCellCommit;
   final void Function(
     (int, int) cell,
     String? tableName,
@@ -42,6 +44,7 @@ class SpreadsheetGrid extends StatefulWidget {
     super.key,
     required this.tables,
     required this.tableData,
+    this.initialSelection,
     this.onCellSelected,
     this.onCellCommit,
     this.onCellDeleteCommit,
@@ -104,6 +107,22 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     super.initState();
     if (widget.externalScale != null) _scale = widget.externalScale!;
     _rebuildCellMap();
+    if (widget.initialSelection != null) {
+      _selectionStart = widget.initialSelection;
+      _selectionEnd = widget.initialSelection;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final cell = widget.initialSelection!;
+        final value = _cellMap[cell] ?? '';
+        final info = _cellInfoMap[cell];
+        widget.onCellSelected?.call(
+          cell, value,
+          info?.tableName, info?.colName, info?.rowIndex,
+          info?.isNew ?? false,
+        );
+        widget.onSelectionChanged?.call(cell, cell, value);
+      });
+    }
     _verticalScrollController.addListener(() => _scrollOffsetY = _verticalScrollController.offset);
     _horizontalScrollController.addListener(() => _scrollOffsetX = _horizontalScrollController.offset);
     HardwareKeyboard.instance.addHandler(_handleHardwareKey);
@@ -134,11 +153,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     for (final info in widget.tables) {
       final data = widget.tableData.firstWhere(
         (d) => d.name == info.name,
-        orElse: () => const TableData(
-          name: '',
-          columns: [],
-          rows: [],
-        ),
+        orElse: () => const TableData(name: '', columns: [], rows: []),
       );
       final startCol = info.position.$1.toInt() + 1;
       final startRow = info.position.$2.toInt() + 1;
@@ -154,17 +169,19 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       }
 
       // Data cells
-      for (int r = data.rows.length; r < data.rows.length + 5; r++) {
+      for (int r = 0; r < data.rows.length; r++) {
+        final row = data.rows[r];
         for (int c = 0; c < data.columns.length; c++) {
           final key = (startRow + r + 1, startCol + c);
-          if (!newCellInfoMap.containsKey(key)) {
-            newCellInfoMap[key] = (tableName: info.name, colName: data.columns[c], rowIndex: r, isNew: true);
-          }
+          final value = c < row.length ? row[c] : '';
+          newCellMap[key] = value;
+          newNumericMap[key] = double.tryParse(value) != null;
+          newCellInfoMap[key] = (tableName: info.name, colName: data.columns[c], rowIndex: r, isNew: false);
         }
       }
 
       // Extra empty rows for appending
-      for (int r = data.rows.length; r < data.rows.length + 20; r++) {
+      for (int r = data.rows.length; r < data.rows.length + 5; r++) {
         for (int c = 0; c < data.columns.length; c++) {
           final key = (startRow + r + 1, startCol + c);
           if (!newCellInfoMap.containsKey(key)) {
@@ -217,8 +234,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     if (char != null && char.isNotEmpty) {
       final cell = _selectionStart!;
       final info = _cellInfoMap[cell];
-
-      // Allow any cell — table data rows, empty rows, and non-table cells
       if (info == null || info.rowIndex >= 0) {
         _inlineCellController.text = char;
         _inlineCellController.selection = TextSelection.collapsed(offset: char.length);
@@ -266,6 +281,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
 
   void _startAutoScrollIfNeeded(Offset position) {
     _autoScrollTimer?.cancel();
+    if (!mounted) return;
     const edgeSize = 40.0;
     const scrollSpeed = 10.0;
     double dx = 0;
@@ -291,7 +307,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
 
   void _startInlineEdit((int, int) cell) {
     final info = _cellInfoMap[cell];
-    if (info != null && info.rowIndex < 0) return;
+    if (info == null) return;
     final currentValue = _cellMap[cell] ?? '';
     _inlineCellController.text = currentValue;
     _inlineCellController.selection = TextSelection(
@@ -303,21 +319,22 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
 
   void _handleTap(Offset localPosition) {
     if (_inlineEditingCell != null) {
+      final tappedCell = _cellAtOffset(localPosition);
+      if (tappedCell == _inlineEditingCell) return;
+
       final editCell = _inlineEditingCell!;
       final v = _inlineCellController.text;
       final info = _cellInfoMap[editCell];
       setState(() {
         _cellMap[editCell] = v;
         _inlineEditingCell = null;
-        _selectionStart = null;
-        _selectionEnd = null;
       });
       widget.onCellCommit?.call(
         editCell, v,
         info?.tableName, info?.colName, info?.rowIndex,
         info?.isNew ?? false,
+        selectAfter: tappedCell,
       );
-      return;
     }
 
     if (localPosition.dx < _scaledRowHeaderWidth && localPosition.dy < _scaledColHeaderHeight) {
