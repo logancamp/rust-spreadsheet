@@ -217,7 +217,9 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     if (char != null && char.isNotEmpty) {
       final cell = _selectionStart!;
       final info = _cellInfoMap[cell];
-      if (info != null && info.rowIndex >= 0) {
+
+      // Allow any cell — table data rows, empty rows, and non-table cells
+      if (info == null || info.rowIndex >= 0) {
         _inlineCellController.text = char;
         _inlineCellController.selection = TextSelection.collapsed(offset: char.length);
         _cellMap[cell] = char;
@@ -301,7 +303,20 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
 
   void _handleTap(Offset localPosition) {
     if (_inlineEditingCell != null) {
-      setState(() => _inlineEditingCell = null);
+      final editCell = _inlineEditingCell!;
+      final v = _inlineCellController.text;
+      final info = _cellInfoMap[editCell];
+      setState(() {
+        _cellMap[editCell] = v;
+        _inlineEditingCell = null;
+        _selectionStart = null;
+        _selectionEnd = null;
+      });
+      widget.onCellCommit?.call(
+        editCell, v,
+        info?.tableName, info?.colName, info?.rowIndex,
+        info?.isNew ?? false,
+      );
       return;
     }
 
