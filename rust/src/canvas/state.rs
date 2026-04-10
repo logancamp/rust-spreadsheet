@@ -178,8 +178,17 @@ pub fn cell_edited(
     let canvas = guard.sheets.get_mut(sheet)
         .ok_or_else(|| AppError::NotFound(format!("Sheet '{}' not found", sheet)))?;
 
-    // rebuild raw grid from current canvas state
     let mut grid = canvas_to_raw_grid(canvas);
+
+    // ← add this: grow grid to fit the edited cell if canvas was empty
+    let needed_rows = row + 1;
+    let needed_cols = col + 1;
+    if grid.rows < needed_rows || grid.cols < needed_cols {
+        grid.resize(
+            grid.rows.max(needed_rows),
+            grid.cols.max(needed_cols),
+        );
+    }
 
     // apply the edit
     grid.set(row, col, value);

@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -792987955;
+  int get rustContentHash => -571174739;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -112,6 +112,12 @@ abstract class RustLibApi extends BaseApi {
   void crateApiSimpleOpenSai({required String path});
 
   void crateApiSimpleSaveSai({required String path});
+
+  Future<void> crateApiSimpleSetCanvasCell(
+      {required String sheetName,
+      required int canvasCol,
+      required int canvasRow,
+      required String value});
 
   void crateApiSimpleSetTablePosition(
       {required String tableName, required double x, required double y});
@@ -438,6 +444,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiSimpleSetCanvasCell(
+      {required String sheetName,
+      required int canvasCol,
+      required int canvasRow,
+      required String value}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(sheetName, serializer);
+        sse_encode_u_32(canvasCol, serializer);
+        sse_encode_u_32(canvasRow, serializer);
+        sse_encode_String(value, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 14, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiSimpleSetCanvasCellConstMeta,
+      argValues: [sheetName, canvasCol, canvasRow, value],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSimpleSetCanvasCellConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_canvas_cell",
+        argNames: ["sheetName", "canvasCol", "canvasRow", "value"],
+      );
+
+  @override
   void crateApiSimpleSetTablePosition(
       {required String tableName, required double x, required double y}) {
     return handler.executeSync(SyncTask(
@@ -446,7 +484,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(tableName, serializer);
         sse_encode_f_32(x, serializer);
         sse_encode_f_32(y, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -470,7 +508,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(name, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,

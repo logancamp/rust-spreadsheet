@@ -50,6 +50,17 @@ void setTablePosition(
     RustLib.instance.api
         .crateApiSimpleSetTablePosition(tableName: tableName, x: x, y: y);
 
+Future<void> setCanvasCell(
+        {required String sheetName,
+        required int canvasCol,
+        required int canvasRow,
+        required String value}) =>
+    RustLib.instance.api.crateApiSimpleSetCanvasCell(
+        sheetName: sheetName,
+        canvasCol: canvasCol,
+        canvasRow: canvasRow,
+        value: value);
+
 EditResult editCell(
         {required String sheetName,
         required String tableName,

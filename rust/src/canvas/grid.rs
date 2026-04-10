@@ -38,6 +38,11 @@ impl RawGrid {
         !self.cells.contains_key(&(row, col))
     }
 
+    pub fn resize(&mut self, rows: u32, cols: u32) {
+        self.rows = self.rows.max(rows);
+        self.cols = self.cols.max(cols);
+    }
+
     /// Find all data islands using orthogonal flood fill + bounding box.
     /// Each island becomes one TableObject.
     pub fn find_islands(&self) -> Result<Vec<IslandData>, AppError> {
@@ -116,6 +121,11 @@ impl RawGrid {
                     .unwrap_or_default()
             })
             .collect();
+
+        let user_defined_headers: Vec<bool> = raw_headers.iter()
+            .map(|h| !h.trim().is_empty())
+            .collect();
+
         let headers = deduplicate_headers(raw_headers);
 
         // extract data rows

@@ -50,6 +50,10 @@ class BridgeService {
       bridge.switchSheet(name: name);
   }
 
+  static void setCanvasCell(String sheetName, int col, int row, String value) {
+    bridge.setCanvasCell(sheetName: sheetName, canvasCol: col, canvasRow: row, value: value);
+  }
+
   static bridge.EditResult editCell(String sheetName, String tableName, String colName, int row, String value) {
     return bridge.editCell(
         sheetName: sheetName,

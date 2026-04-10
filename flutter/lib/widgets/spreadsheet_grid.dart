@@ -7,19 +7,51 @@ import 'package:spreadsheet_ai/src/rust/api/simple.dart';
 class SpreadsheetGrid extends StatefulWidget {
   final List<TableInfo> tables;
   final List<TableData> tableData;
-  final void Function((int, int)? cell, String value)? onCellSelected;
+  final void Function(
+    (int, int)? cell,
+    String value,
+    String? tableName,
+    String? colName,
+    int? rowIndex,
+    bool isNew,
+  )? onCellSelected;
+  final void Function(
+    (int, int) cell,
+    String value,
+    String? tableName,
+    String? colName,
+    int? rowIndex,
+    bool isNew,
+  )? onCellCommit;
+  final void Function(
+    (int, int) cell,
+    String? tableName,
+    String? colName,
+    int? rowIndex,
+    bool isNew,
+  )? onCellDeleteCommit;
   final void Function((int, int)? start, (int, int)? end, String value)? onSelectionChanged;
   final void Function(double)? onScaleChanged;
+  final void Function(String value)? onCellValueChanged;
   final double? externalScale;
+  final String? formulaBarValue;
+  final (int, int)? formulaBarCell;
+  final bool formulaBarFocused;
 
   const SpreadsheetGrid({
     super.key,
     required this.tables,
     required this.tableData,
     this.onCellSelected,
+    this.onCellCommit,
+    this.onCellDeleteCommit,
     this.onSelectionChanged,
     this.onScaleChanged,
+    this.onCellValueChanged,
     this.externalScale,
+    this.formulaBarValue,
+    this.formulaBarCell,
+    this.formulaBarFocused = false,
   });
 
   @override
@@ -42,6 +74,13 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
 
   Map<(int, int), String> _cellMap = {};
   Map<(int, int), bool> _numericMap = {};
+  Map<(int, int), ({String tableName, String colName, int rowIndex, bool isNew})> _cellInfoMap = {};
+
+  (int, int)? _lastTappedCell;
+  DateTime? _lastTapTime;
+
+  (int, int)? _inlineEditingCell;
+  final TextEditingController _inlineCellController = TextEditingController();
 
   final ScrollController _verticalScrollController = ScrollController();
   final ScrollController _horizontalScrollController = ScrollController();
@@ -67,6 +106,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     _rebuildCellMap();
     _verticalScrollController.addListener(() => _scrollOffsetY = _verticalScrollController.offset);
     _horizontalScrollController.addListener(() => _scrollOffsetX = _horizontalScrollController.offset);
+    HardwareKeyboard.instance.addHandler(_handleHardwareKey);
   }
 
   @override
@@ -75,47 +115,128 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     if (widget.externalScale != null && widget.externalScale != oldWidget.externalScale) {
       setState(() => _scale = widget.externalScale!);
     }
-    if (widget.tables != oldWidget.tables || widget.tableData != oldWidget.tableData) {
-      _rebuildCellMap();
+    if (_inlineEditingCell == null &&
+        (widget.tables != oldWidget.tables || widget.tableData != oldWidget.tableData)) {
+      setState(() => _rebuildCellMap());
+    }
+    if (widget.formulaBarValue != oldWidget.formulaBarValue &&
+        widget.formulaBarCell != null &&
+        _inlineEditingCell == null) {
+      setState(() => _cellMap[widget.formulaBarCell!] = widget.formulaBarValue ?? '');
     }
   }
 
   void _rebuildCellMap() {
     final newCellMap = <(int, int), String>{};
     final newNumericMap = <(int, int), bool>{};
+    final newCellInfoMap = <(int, int), ({String tableName, String colName, int rowIndex, bool isNew})>{};
+
     for (final info in widget.tables) {
       final data = widget.tableData.firstWhere(
         (d) => d.name == info.name,
-        orElse: () => const TableData(name: '', columns: [], rows: []),
+        orElse: () => const TableData(
+          name: '',
+          columns: [],
+          rows: [],
+        ),
       );
       final startCol = info.position.$1.toInt() + 1;
       final startRow = info.position.$2.toInt() + 1;
-      // Column headers — never numeric
+
+      // Column headers
       for (int c = 0; c < data.columns.length; c++) {
         final key = (startRow, startCol + c);
-        newCellMap[key] = data.columns[c];
+        final colName = data.columns[c];
+        final isSynthetic = RegExp(r'^col_\d+$').hasMatch(colName);
+        newCellMap[key] = isSynthetic ? '' : colName;
         newNumericMap[key] = false;
+        newCellInfoMap[key] = (tableName: info.name, colName: colName, rowIndex: -1, isNew: false);
       }
-      // Data rows
-      for (int r = 0; r < data.rows.length; r++) {
-        for (int c = 0; c < data.rows[r].length; c++) {
+
+      // Data cells
+      for (int r = data.rows.length; r < data.rows.length + 5; r++) {
+        for (int c = 0; c < data.columns.length; c++) {
           final key = (startRow + r + 1, startCol + c);
-          final value = data.rows[r][c];
-          newCellMap[key] = value;
-          newNumericMap[key] = double.tryParse(value) != null;
+          if (!newCellInfoMap.containsKey(key)) {
+            newCellInfoMap[key] = (tableName: info.name, colName: data.columns[c], rowIndex: r, isNew: true);
+          }
+        }
+      }
+
+      // Extra empty rows for appending
+      for (int r = data.rows.length; r < data.rows.length + 20; r++) {
+        for (int c = 0; c < data.columns.length; c++) {
+          final key = (startRow + r + 1, startCol + c);
+          if (!newCellInfoMap.containsKey(key)) {
+            newCellInfoMap[key] = (tableName: info.name, colName: data.columns[c], rowIndex: r, isNew: true);
+          }
         }
       }
     }
+
     _cellMap = newCellMap;
     _numericMap = newNumericMap;
+    _cellInfoMap = newCellInfoMap;
     _tableBorderMap = _buildTableBorderMap();
+  }
+
+  bool _handleHardwareKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    if (widget.formulaBarFocused) return false;
+    if (_selectionStart == null) return false;
+    if (_inlineEditingCell != null) return false;
+    if (_isCommandHeld) return false;
+
+    if (event.logicalKey == LogicalKeyboardKey.delete ||
+        event.logicalKey == LogicalKeyboardKey.backspace) {
+      final toDelete = <(int, int)>[];
+      for (final key in _cellInfoMap.keys) {
+        if (_isSelected(key.$1, key.$2)) {
+          final info = _cellInfoMap[key];
+          if (info != null && info.rowIndex >= 0 && !info.isNew) {
+            toDelete.add(key);
+          }
+        }
+      }
+      for (final key in toDelete) {
+        final info = _cellInfoMap[key]!;
+        setState(() => _cellMap[key] = '');
+        widget.onCellDeleteCommit?.call(key, info.tableName, info.colName, info.rowIndex, info.isNew);
+      }
+      if (toDelete.isNotEmpty) {
+        setState(() {
+          _selectionStart = null;
+          _selectionEnd = null;
+          _additionalSelections = [];
+        });
+      }
+      return toDelete.isNotEmpty;
+    }
+
+    final char = event.character;
+    if (char != null && char.isNotEmpty) {
+      final cell = _selectionStart!;
+      final info = _cellInfoMap[cell];
+      if (info != null && info.rowIndex >= 0) {
+        _inlineCellController.text = char;
+        _inlineCellController.selection = TextSelection.collapsed(offset: char.length);
+        _cellMap[cell] = char;
+        setState(() => _inlineEditingCell = cell);
+        widget.onCellValueChanged?.call(char);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
     _autoScrollTimer?.cancel();
     _verticalScrollController.dispose();
     _horizontalScrollController.dispose();
+    _inlineCellController.dispose();
     super.dispose();
   }
 
@@ -166,7 +287,24 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     });
   }
 
+  void _startInlineEdit((int, int) cell) {
+    final info = _cellInfoMap[cell];
+    if (info != null && info.rowIndex < 0) return;
+    final currentValue = _cellMap[cell] ?? '';
+    _inlineCellController.text = currentValue;
+    _inlineCellController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: currentValue.length,
+    );
+    setState(() => _inlineEditingCell = cell);
+  }
+
   void _handleTap(Offset localPosition) {
+    if (_inlineEditingCell != null) {
+      setState(() => _inlineEditingCell = null);
+      return;
+    }
+
     if (localPosition.dx < _scaledRowHeaderWidth && localPosition.dy < _scaledColHeaderHeight) {
       final isAllSelected = _selectionStart == (1, 1) && _selectionEnd == (999, 99);
       setState(() {
@@ -177,6 +315,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, '');
       return;
     }
+
     final colHeader = _colHeaderAtOffset(localPosition);
     if (colHeader != null) {
       setState(() {
@@ -188,10 +327,11 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         _selectionStart = (1, colHeader);
         _selectionEnd = (999, colHeader);
       });
-      widget.onCellSelected?.call(null, '');
+      widget.onCellSelected?.call(null, '', null, null, null, false);
       widget.onSelectionChanged?.call((1, colHeader), (999, colHeader), '');
       return;
     }
+
     final rowHeader = _rowHeaderAtOffset(localPosition);
     if (rowHeader != null) {
       setState(() {
@@ -203,12 +343,27 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         _selectionStart = (rowHeader, 1);
         _selectionEnd = (rowHeader, 99);
       });
-      widget.onCellSelected?.call(null, '');
+      widget.onCellSelected?.call(null, '', null, null, null, false);
       widget.onSelectionChanged?.call((rowHeader, 1), (rowHeader, 99), '');
       return;
     }
+
     final cell = _cellAtOffset(localPosition);
     if (cell == null) return;
+
+    final now = DateTime.now();
+    final isDoubleTap = _lastTappedCell == cell &&
+        _lastTapTime != null &&
+        now.difference(_lastTapTime!).inMilliseconds < 400;
+
+    _lastTappedCell = cell;
+    _lastTapTime = now;
+
+    if (isDoubleTap) {
+      _startInlineEdit(cell);
+      return;
+    }
+
     if (_isCommandHeld) {
       setState(() {
         if (_selectionStart != null && _selectionEnd != null) {
@@ -225,7 +380,8 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       });
     }
     final value = _cellMap[cell] ?? '';
-    widget.onCellSelected?.call(cell, value);
+    final info = _cellInfoMap[cell];
+    widget.onCellSelected?.call(cell, value, info?.tableName, info?.colName, info?.rowIndex, info?.isNew ?? false);
     widget.onSelectionChanged?.call(cell, cell, value);
   }
 
@@ -301,6 +457,27 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     return Border.all(color: const Color(0xFFD0D0D0), width: 0.5);
   }
 
+  Map<(int, int), Set<String>> _buildTableBorderMap() {
+    final map = <(int, int), Set<String>>{};
+    for (final info in widget.tables) {
+      final startCol = info.position.$1.toInt() + 1;
+      final startRow = info.position.$2.toInt() + 1;
+      final endCol = startCol + info.cols - 1;
+      final endRow = startRow + info.rows;
+      for (int r = startRow; r <= endRow; r++) {
+        for (int c = startCol; c <= endCol; c++) {
+          final key = (r, c);
+          map[key] ??= {};
+          if (r == startRow) map[key]!.add('top');
+          if (r == endRow) map[key]!.add('bottom');
+          if (c == startCol) map[key]!.add('left');
+          if (c == endCol) map[key]!.add('right');
+        }
+      }
+    }
+    return map;
+  }
+
   String _colLabel(int col) {
     String label = '';
     int c = col;
@@ -343,7 +520,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
             final delta = (event.localPosition - _dragStartPosition!).distance;
             if (delta > 5) _isDragging = true;
           }
-          if (_isDragging && _selectionStart != null) {
+          if (_isDragging && _selectionStart != null && _inlineEditingCell == null) {
             _startAutoScrollIfNeeded(event.localPosition);
             final colHeader = _colHeaderAtOffset(event.localPosition);
             if (colHeader != null) { setState(() => _selectionEnd = (999, colHeader)); return; }
@@ -358,9 +535,11 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
           _dragStartPosition = null;
           _autoScrollTimer?.cancel();
           _autoScrollTimer = null;
-          final value = (_selectionStart == _selectionEnd && _selectionStart != null)
-              ? _cellMap[_selectionStart] ?? '' : '';
-          widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, value);
+          if (_inlineEditingCell == null) {
+            final value = (_selectionStart == _selectionEnd && _selectionStart != null)
+                ? _cellMap[_selectionStart] ?? '' : '';
+            widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, value);
+          }
         },
         child: TableView.builder(
           diagonalDragBehavior: DiagonalDragBehavior.free,
@@ -423,6 +602,8 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     final selected = _isSelected(row, col);
     final border = _borderForCell(row, col);
     final isNumeric = _numericMap[(row, col)] == true;
+    final isEditing = _inlineEditingCell == (row, col);
+
     return Container(
       alignment: isNumeric ? Alignment.centerRight : Alignment.centerLeft,
       padding: EdgeInsets.symmetric(horizontal: 4 * _scale),
@@ -430,34 +611,37 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         color: selected ? const Color(0xFFE8F5E9) : Colors.white,
         border: border,
       ),
-      child: Text(
-        value,
-        style: TextStyle(fontSize: 12 * _scale),
-        overflow: TextOverflow.ellipsis,
-      ),
+      child: isEditing
+          ? TextField(
+              controller: _inlineCellController,
+              autofocus: true,
+              style: TextStyle(fontSize: 12 * _scale),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (v) {
+                _cellMap[(row, col)] = v;
+                widget.onCellValueChanged?.call(v);
+              },
+              onSubmitted: (v) {
+                final info = _cellInfoMap[(row, col)];
+                setState(() {
+                  _cellMap[(row, col)] = v;
+                  _inlineEditingCell = null;
+                  _selectionStart = null;
+                  _selectionEnd = null;
+                });
+                widget.onCellCommit?.call(
+                  (row, col), v,
+                  info?.tableName, info?.colName, info?.rowIndex,
+                  info?.isNew ?? false,
+                );
+              },
+            )
+          : Text(value, style: TextStyle(fontSize: 12 * _scale), overflow: TextOverflow.ellipsis),
     );
-  }
-
-  Map<(int, int), Set<String>> _buildTableBorderMap() {
-    final map = <(int, int), Set<String>>{};
-    for (final info in widget.tables) {
-      final startCol = info.position.$1.toInt() + 1;
-      final startRow = info.position.$2.toInt() + 1;
-      final endCol = startCol + info.cols - 1;
-      final endRow = startRow + info.rows;  // +1 for header row
-
-      for (int r = startRow; r <= endRow; r++) {
-        for (int c = startCol; c <= endCol; c++) {
-          final key = (r, c);
-          map[key] ??= {};
-          if (r == startRow) map[key]!.add('top');
-          if (r == endRow) map[key]!.add('bottom');
-          if (c == startCol) map[key]!.add('left');
-          if (c == endCol) map[key]!.add('right');
-        }
-      }
-    }
-    return map;
   }
 }
 

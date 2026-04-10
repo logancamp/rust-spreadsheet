@@ -91,7 +91,7 @@ pub struct ColumnSchema {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct TableMetadata {
+pub struct TableMetadata {
     pub source_path: Option<String>,
     pub row_meta: Option<DataFrame>,
     pub column_meta: Option<DataFrame>,

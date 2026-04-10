@@ -1,3 +1,4 @@
+// spreadsheet_screen.dart
 import 'package:flutter/material.dart';
 import '../services/bridge_service.dart';
 import 'package:spreadsheet_ai/src/rust/api/simple.dart';
@@ -16,16 +17,39 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
   List<String> _sheets = [];
   String? _activeSheet;
   List<TableInfo> _tables = [];
+  List<TableData> _tableDataCache = [];
   String? _selectedTable;
   String? _currentPath;
   String _selectedCellAddress = '';
   String _selectedCellValue = '';
   double _scale = 1.0;
+  int _commitKey = 0;
+  bool _editingIsNew = false;
+
+  (int, int)? _editingCell;
+  String _originalCellValue = '';
+  String? _editingTableName;
+  String? _editingColName;
+  int? _editingRowIndex;
+
+  final TextEditingController _formulaController = TextEditingController();
+  final FocusNode _formulaBarFocusNode = FocusNode();
+  bool _formulaBarFocused = false;
 
   @override
   void initState() {
     super.initState();
     BridgeService.newCanvas('Untitled');
+    _formulaBarFocusNode.addListener(() {
+      setState(() => _formulaBarFocused = _formulaBarFocusNode.hasFocus);
+    });
+  }
+
+  @override
+  void dispose() {
+    _formulaController.dispose();
+    _formulaBarFocusNode.dispose();
+    super.dispose();
   }
 
   String _toColLabel(int col) {
@@ -46,22 +70,82 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
       BridgeService.switchSheet(activeSheet);
     }
     final tables = BridgeService.getCanvasTables();
+    final tableData = tables.map((t) => BridgeService.getTableData(t.name)).toList();
     setState(() {
       _sheets = sheets;
       _activeSheet = activeSheet;
       _tables = tables;
+      _tableDataCache = tableData;
       if (tables.isNotEmpty) _selectedTable = tables.first.name;
+    });
+  }
+
+  void _refreshTableData() {
+    final tables = BridgeService.getCanvasTables();
+    final tableData = tables.map((t) => BridgeService.getTableData(t.name)).toList();
+    setState(() {
+      _tables = tables;
+      _tableDataCache = tableData;
     });
   }
 
   void _switchSheet(String name) {
     BridgeService.switchSheet(name);
     final tables = BridgeService.getCanvasTables();
+    final tableData = tables.map((t) => BridgeService.getTableData(t.name)).toList();
     setState(() {
       _activeSheet = name;
       _tables = tables;
+      _tableDataCache = tableData;
       _selectedTable = tables.isNotEmpty ? tables.first.name : null;
+      _editingCell = null;
+      _formulaController.text = '';
+      _selectedCellAddress = '';
+      _selectedCellValue = '';
     });
+  }
+
+  Future<void> _commitEdit(String value, {
+    String? tableName,
+    String? colName,
+    int? rowIndex,
+    bool isNew = false,
+    (int, int)? gridCell,
+  }) async {
+    final tn = tableName ?? _editingTableName;
+    final cn = colName ?? _editingColName;
+    final ri = rowIndex ?? _editingRowIndex;
+    final ni = isNew || _editingIsNew;
+    final cell = gridCell ?? _editingCell;
+
+    setState(() {
+      _selectedCellValue = value;
+      _originalCellValue = value;
+      _editingCell = null;
+      _editingIsNew = false;
+      _selectedCellAddress = '';
+      _formulaController.text = '';
+      _commitKey++;
+    });
+
+    if (_activeSheet == null) return;
+
+    if (tn != null && cn != null && ri != null && ri >= 0 && !ni) {
+      // Existing table data row
+      BridgeService.editCell(_activeSheet!, tn, cn, ri, value);
+    } else if (cell != null) {
+      // Header edit, new row, or non-table cell — all go through canvas
+      final canvasCol = cell.$2 - 1;
+      final canvasRow = cell.$1 - 1;
+      BridgeService.setCanvasCell(_activeSheet!, canvasCol, canvasRow, value);
+    }
+
+    _refreshTableData();
+  }
+
+  void _revertEdit() {
+    _formulaController.text = _originalCellValue;
+    setState(() => _selectedCellValue = _originalCellValue);
   }
 
   Future<void> _saveAs() async {
@@ -80,10 +164,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
   Future<void> _handleFileMenu(String value) async {
     switch (value) {
       case 'open':
-        final result = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['sai'],
-        );
+        final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['sai']);
         if (result != null) {
           final path = result.files.single.path!;
           BridgeService.openSai(path);
@@ -94,9 +175,10 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
       case 'new':
         BridgeService.newCanvas('Untitled');
         setState(() {
-          _sheets = []; _activeSheet = null; _tables = [];
+          _sheets = []; _activeSheet = null; _tables = []; _tableDataCache = [];
           _selectedTable = null; _currentPath = null;
           _selectedCellAddress = ''; _selectedCellValue = '';
+          _editingCell = null; _formulaController.text = '';
         });
         break;
       case 'import_csv':
@@ -116,7 +198,11 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
         _refreshSheets();
         break;
       case 'save':
-        if (_currentPath != null) BridgeService.saveSai(_currentPath!); else await _saveAs();
+        if (_currentPath != null) {
+          BridgeService.saveSai(_currentPath!);
+        } else {
+          await _saveAs();
+        }
         break;
       case 'save_as':
         await _saveAs();
@@ -218,9 +304,29 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                     child: Text(_selectedCellAddress, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                   ),
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(_selectedCellValue, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                    child: KeyboardListener(
+                      focusNode: FocusNode(),
+                      onKeyEvent: (event) {
+                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+                          _revertEdit();
+                        }
+                      },
+                      child: TextField(
+                        controller: _formulaController,
+                        focusNode: _formulaBarFocusNode,
+                        style: const TextStyle(fontSize: 12),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                        ),
+                        onChanged: (value) {
+                          _selectedCellValue = value;
+                          // Trigger rebuild only to sync cell preview
+                          setState(() {});
+                        },
+                        onSubmitted: (value) => _commitEdit(value, gridCell: _editingCell),
+                      ),
                     ),
                   ),
                 ],
@@ -229,35 +335,72 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
             /// Grid
             Expanded(
               child: SpreadsheetGrid(
+                key: ValueKey(_commitKey),
+                formulaBarFocused: _formulaBarFocused,
+                onCellDeleteCommit: (cell, tableName, colName, rowIndex, isNew) {
+                  _commitEdit('',
+                    tableName: tableName,
+                    colName: colName,
+                    rowIndex: rowIndex,
+                    isNew: isNew,
+                    gridCell: cell,
+                  );
+                },
                 tables: _tables,
-                tableData: _tables.map((t) => BridgeService.getTableData(t.name)).toList(),
+                tableData: _tableDataCache,
                 externalScale: _scale,
                 onScaleChanged: (s) => setState(() => _scale = s),
-                onCellSelected: (cell, value) {
+                formulaBarValue: _selectedCellValue,
+                formulaBarCell: _editingCell,
+                onCellValueChanged: (value) {
+                  _formulaController.text = value;
+                  _selectedCellValue = value;
+                },
+                onCellSelected: (cell, value, tableName, colName, rowIndex, isNew) {
                   if (cell == null) {
                     setState(() { _selectedCellAddress = ''; _selectedCellValue = ''; });
+                    _formulaController.text = '';
+                    _editingCell = null;
+                    _editingTableName = null;
+                    _editingColName = null;
+                    _editingRowIndex = null;
+                    _editingIsNew = false;
                     return;
                   }
+                  _originalCellValue = value;
+                  _formulaController.text = value;
                   setState(() {
                     _selectedCellAddress = '${_toColLabel(cell.$2)}${cell.$1}';
                     _selectedCellValue = value;
+                    _editingCell = cell;
+                    _editingTableName = tableName;
+                    _editingColName = colName;
+                    _editingRowIndex = rowIndex;
+                    _editingIsNew = isNew;
                   });
+                },
+                onCellCommit: (cell, value, tableName, colName, rowIndex, isNew) {
+                  _commitEdit(value, tableName: tableName, colName: colName, rowIndex: rowIndex, isNew: isNew, gridCell: cell);
                 },
                 onSelectionChanged: (start, end, value) {
                   if (start == null) {
                     setState(() { _selectedCellAddress = ''; _selectedCellValue = ''; });
+                    _formulaController.text = '';
                     return;
                   }
                   final startAddr = '${_toColLabel(start.$2)}${start.$1}';
                   final endAddr = (end == null || start == end) ? null : '${_toColLabel(end.$2)}${end.$1}';
+                  _formulaController.text = value;
+                  _originalCellValue = value;
                   setState(() {
                     _selectedCellAddress = endAddr != null ? '$startAddr:$endAddr' : startAddr;
                     _selectedCellValue = value;
+                    _editingCell = (end == null || start == end) ? start : null;
                   });
                 },
               ),
             ),
-            /// Sheet tabs
+            /// Sheet tabs + zoom bar
             Container(
               height: 36,
               color: Colors.grey[100],
@@ -291,10 +434,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                       children: [
                         GestureDetector(
                           onTap: () => setState(() => _scale = 1.0),
-                          child: Text(
-                            '${(_scale * 100).round()}%',
-                            style: const TextStyle(fontSize: 11),
-                          ),
+                          child: Text('${(_scale * 100).round()}%', style: const TextStyle(fontSize: 11)),
                         ),
                         Expanded(
                           child: SliderTheme(

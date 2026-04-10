@@ -165,6 +165,10 @@ pub struct EditResult {
     pub affected_tables: Vec<String>,
 }
 
+pub fn set_canvas_cell(sheet_name: String, canvas_col: u32, canvas_row: u32, value: String) {
+    spreadsheet_ai::canvas::state::cell_edited(&sheet_name, canvas_row, canvas_col, value);
+}
+
 #[frb(sync)]
 pub fn edit_cell(
     sheet_name: &str,
