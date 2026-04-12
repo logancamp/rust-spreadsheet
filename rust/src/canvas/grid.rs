@@ -25,7 +25,9 @@ impl RawGrid {
     }
 
     pub fn set(&mut self, row: u32, col: u32, value: String) {
-        if !value.trim().is_empty() {
+        if value.trim().is_empty() {
+            self.cells.remove(&(row, col));
+        } else {
             self.cells.insert((row, col), value);
         }
     }

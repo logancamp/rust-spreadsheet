@@ -84,6 +84,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
 
   (int, int)? _inlineEditingCell;
   final TextEditingController _inlineCellController = TextEditingController();
+  final FocusNode _inlineFocusNode = FocusNode(skipTraversal: true);
 
   final ScrollController _verticalScrollController = ScrollController();
   final ScrollController _horizontalScrollController = ScrollController();
@@ -158,7 +159,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       final startCol = info.position.$1.toInt() + 1;
       final startRow = info.position.$2.toInt() + 1;
 
-      // Column headers
       for (int c = 0; c < data.columns.length; c++) {
         final key = (startRow, startCol + c);
         final colName = data.columns[c];
@@ -168,7 +168,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         newCellInfoMap[key] = (tableName: info.name, colName: colName, rowIndex: -1, isNew: false);
       }
 
-      // Data cells
       for (int r = 0; r < data.rows.length; r++) {
         final row = data.rows[r];
         for (int c = 0; c < data.columns.length; c++) {
@@ -180,7 +179,6 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
         }
       }
 
-      // Extra empty rows for appending
       for (int r = data.rows.length; r < data.rows.length + 5; r++) {
         for (int c = 0; c < data.columns.length; c++) {
           final key = (startRow + r + 1, startCol + c);
@@ -204,15 +202,47 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     if (_inlineEditingCell != null) return false;
     if (_isCommandHeld) return false;
 
+    // Consume Tab entirely to prevent focus traversal
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      return true;
+    }
+
+    // Arrow key navigation
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+        event.logicalKey == LogicalKeyboardKey.arrowDown ||
+        event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+        event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      final (row, col) = _selectionStart!;
+      (int, int) next;
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        next = (row - 1 < 1 ? 1 : row - 1, col);
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        next = (row + 1, col);
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        next = (row, col - 1 < 1 ? 1 : col - 1);
+      } else {
+        next = (row, col + 1);
+      }
+      setState(() {
+        _selectionStart = next;
+        _selectionEnd = next;
+        _additionalSelections = [];
+      });
+      final value = _cellMap[next] ?? '';
+      final info = _cellInfoMap[next];
+      widget.onCellSelected?.call(next, value, info?.tableName, info?.colName, info?.rowIndex, info?.isNew ?? false);
+      widget.onSelectionChanged?.call(next, next, value);
+      return true;
+    }
+
+    // Delete / Backspace
     if (event.logicalKey == LogicalKeyboardKey.delete ||
         event.logicalKey == LogicalKeyboardKey.backspace) {
       final toDelete = <(int, int)>[];
       for (final key in _cellInfoMap.keys) {
         if (_isSelected(key.$1, key.$2)) {
           final info = _cellInfoMap[key];
-          if (info != null && info.rowIndex >= 0 && !info.isNew) {
-            toDelete.add(key);
-          }
+          if (info != null && !info.isNew) toDelete.add(key);
         }
       }
       for (final key in toDelete) {
@@ -230,8 +260,9 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       return toDelete.isNotEmpty;
     }
 
+    // Printable key — start inline edit
     final char = event.character;
-    if (char != null && char.isNotEmpty) {
+    if (char != null && char.isNotEmpty && char.codeUnits.first >= 32) {
       final cell = _selectionStart!;
       final info = _cellInfoMap[cell];
       if (info == null || info.rowIndex >= 0) {
@@ -254,6 +285,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
     _verticalScrollController.dispose();
     _horizontalScrollController.dispose();
     _inlineCellController.dispose();
+    _inlineFocusNode.dispose();
     super.dispose();
   }
 
@@ -573,40 +605,48 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
             widget.onSelectionChanged?.call(_selectionStart, _selectionEnd, value);
           }
         },
-        child: TableView.builder(
-          diagonalDragBehavior: DiagonalDragBehavior.free,
-          rowCount: 1000,
-          columnCount: 100,
-          pinnedRowCount: 1,
-          pinnedColumnCount: 1,
-          verticalDetails: ScrollableDetails.vertical(controller: _verticalScrollController),
-          horizontalDetails: ScrollableDetails.horizontal(controller: _horizontalScrollController),
-          rowBuilder: (index) => TableSpan(extent: FixedTableSpanExtent(_scaledCellHeight)),
-          columnBuilder: (index) => TableSpan(
-            extent: FixedTableSpanExtent(index == 0 ? _scaledRowHeaderWidth : _scaledCellWidth),
-          ),
-          cellBuilder: (context, vicinity) {
-            final row = vicinity.row;
-            final col = vicinity.column;
-            if (row == 0 && col == 0) {
-              return TableViewCell(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8E8E8),
-                    border: Border.all(color: const Color(0xFFD0D0D0), width: 0.5),
-                  ),
-                  child: CustomPaint(painter: _CornerTrianglePainter()),
-                ),
-              );
-            }
-            if (row == 0) {
-              return TableViewCell(child: _headerCell(_colLabel(col - 1), highlighted: _isColHighlighted(col)));
-            }
-            if (col == 0) {
-              return TableViewCell(child: _headerCell('$row', highlighted: _isRowHighlighted(row)));
-            }
-            return TableViewCell(child: _dataCell(_cellMap[(row, col)] ?? '', row, col));
+        child: Actions(
+          actions: <Type, Action<Intent>>{
+            ScrollIntent: DoNothingAction(consumesKey: false),
+            NextFocusIntent: DoNothingAction(consumesKey: true),
+            PreviousFocusIntent: DoNothingAction(consumesKey: true),
+            DirectionalFocusIntent: DoNothingAction(consumesKey: true),
           },
+          child: TableView.builder(
+            diagonalDragBehavior: DiagonalDragBehavior.free,
+            rowCount: 1000,
+            columnCount: 100,
+            pinnedRowCount: 1,
+            pinnedColumnCount: 1,
+            verticalDetails: ScrollableDetails.vertical(controller: _verticalScrollController),
+            horizontalDetails: ScrollableDetails.horizontal(controller: _horizontalScrollController),
+            rowBuilder: (index) => TableSpan(extent: FixedTableSpanExtent(_scaledCellHeight)),
+            columnBuilder: (index) => TableSpan(
+              extent: FixedTableSpanExtent(index == 0 ? _scaledRowHeaderWidth : _scaledCellWidth),
+            ),
+            cellBuilder: (context, vicinity) {
+              final row = vicinity.row;
+              final col = vicinity.column;
+              if (row == 0 && col == 0) {
+                return TableViewCell(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8E8E8),
+                      border: Border.all(color: const Color(0xFFD0D0D0), width: 0.5),
+                    ),
+                    child: CustomPaint(painter: _CornerTrianglePainter()),
+                  ),
+                );
+              }
+              if (row == 0) {
+                return TableViewCell(child: _headerCell(_colLabel(col - 1), highlighted: _isColHighlighted(col)));
+              }
+              if (col == 0) {
+                return TableViewCell(child: _headerCell('$row', highlighted: _isRowHighlighted(row)));
+              }
+              return TableViewCell(child: _dataCell(_cellMap[(row, col)] ?? '', row, col));
+            },
+          ),
         ),
       ),
     );
@@ -646,6 +686,7 @@ class _SpreadsheetGridState extends State<SpreadsheetGrid> {
       child: isEditing
           ? TextField(
               controller: _inlineCellController,
+              focusNode: _inlineFocusNode,
               autofocus: true,
               style: TextStyle(fontSize: 12 * _scale),
               decoration: const InputDecoration(

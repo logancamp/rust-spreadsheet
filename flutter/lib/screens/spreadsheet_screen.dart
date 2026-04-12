@@ -33,8 +33,7 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
   int? _editingRowIndex;
 
   final TextEditingController _formulaController = TextEditingController();
-  final FocusNode _formulaBarFocusNode = FocusNode();
-  bool _formulaBarFocused = false;
+  final FocusNode _formulaBarFocusNode = FocusNode(skipTraversal: true);  bool _formulaBarFocused = false;
 
   @override
   void initState() {
@@ -454,12 +453,14 @@ class _SpreadsheetScreenState extends State<SpreadsheetScreen> {
                               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                               overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                             ),
-                            child: Slider(
-                              value: _scale.clamp(0.3, 4.0),
-                              min: 0.3,
-                              max: 4.0,
-                              activeColor: Colors.green,
-                              onChanged: (v) => setState(() => _scale = v),
+                            child: ExcludeFocus(
+                              child: Slider(
+                                value: _scale.clamp(0.3, 4.0),
+                                min: 0.3,
+                                max: 4.0,
+                                activeColor: Colors.green,
+                                onChanged: (v) => setState(() => _scale = v),
+                              ),
                             ),
                           ),
                         ),
