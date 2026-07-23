@@ -1,2 +1,2 @@
-# spreadsheet-ai
-An AI driven spreadsheet software like Excel with integrated AI and ML options for non-technical users. Part of an ambitious AI drive Office Suite catelog.
+# rust spreadsheet
+Rust backend, Dart front end, this project creates a spreadsheet application similar to excel for the purpose or exploring the Rust and Dart languages.
